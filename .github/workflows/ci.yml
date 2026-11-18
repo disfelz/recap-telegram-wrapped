@@ -1,0 +1,71 @@
+name: RECAP CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'imports/**'
+  pull_request:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Import RECAP source"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  scanner-tests:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scanner/requirements.txt
+      - name: Install scanner dependencies
+        run: python -m pip install -r scanner/requirements.txt pytest
+      - name: Test 12 scanner scenarios
+        run: PYTHONPATH=. python -m pytest tests/test_analyzer.py -v
+      - name: Compile Python files
+        run: python -m compileall -q scanner
+
+  frontend-build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend packages
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+      - name: TypeScript check + Vite build
+        working-directory: frontend
+        env:
+          VITE_ENABLE_DEMO: 'false'
+        run: npm run build
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recap-frontend-dist
+          path: frontend/dist/
+          if-no-files-found: error
+
+  backend-typecheck:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install backend packages
+        working-directory: backend
+        run: npm install --no-audit --no-fund
+      - name: Type-check Cloudflare Worker
+        working-directory: backend
+        run: npm run typecheck
