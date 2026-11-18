@@ -298,7 +298,7 @@ export default function App() {
           <button className={`nav-item ${screen === 'welcome' ? 'active' : ''}`} onClick={() => setScreen('welcome')}>
             <Home size={19} /> Главная
           </button>
-          <button className={`nav-item ${screen === 'stories' ? 'active' : ''}`} onClick={() => openResults('stories')}>
+          <button className="nav-item" onClick={() => openResults('stories')}>
             <Sparkles size={19} /> Истории
           </button>
           <button className={`nav-item ${screen === 'analytics' ? 'active' : ''}`} onClick={() => openResults('analytics')}>
