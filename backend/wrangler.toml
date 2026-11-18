@@ -1,0 +1,17 @@
+name = "recap-telegram-api"
+main = "src/index.ts"
+compatibility_date = "2026-01-15"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "recap-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[vars]
+APP_URL = "https://recap-mini-app.pages.dev"
+SCANNER_BASE_URL = "https://recap-scanner.onrender.com"
+
+# Зашифрованные секреты добавляются через Cloudflare Dashboard / wrangler secret put:
+# BOT_TOKEN
+# BOT_WEBHOOK_SECRET
+# SCANNER_SHARED_SECRET
