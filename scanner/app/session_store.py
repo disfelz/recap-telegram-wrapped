@@ -1,4 +1,4 @@
-"""Encrypted session vault. Mount SESSION_STORE_DIR on a persistent private volume."""
+"""Encrypted temporary MTProto vault; credentials are erased after each scan."""
 from __future__ import annotations
 
 import os
@@ -43,6 +43,7 @@ class EncryptedSessionStore:
                 os.unlink(temporary)
 
     def delete(self, telegram_user_id: int) -> None:
+        """Erase the encrypted session file even when Telegram logout failed."""
         self._path(telegram_user_id).unlink(missing_ok=True)
 
     def has_session(self, telegram_user_id: int) -> bool:

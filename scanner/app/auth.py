@@ -87,7 +87,7 @@ class MTProtoAuthManager:
             StringSession(session_str),
             self._api_id,
             self._api_hash,
-            device_model="RECAP Analyzer",
+            device_model="RECAP · временный подсчёт",
             system_version="Linux",
             app_version="1.0",
             lang_code="ru",
@@ -236,18 +236,18 @@ class MTProtoAuthManager:
         return self._new_client(session_str)
 
     async def _revoke_saved_session(self, telegram_user_id: int) -> None:
+        """Revoke a prior authorization; never leave the local credential behind."""
         session = self._store.load(telegram_user_id)
         if not session:
             return
         client = self._new_client(session)
         try:
             await client.connect()
-            # If already revoked in Telegram, deleting the local credential is safe.
             if await client.is_user_authorized():
-                await client(LogOutRequest())
-            self._store.delete(telegram_user_id)
+                await self.terminate_client_session(client)
         finally:
             await client.disconnect()
+            self._store.delete(telegram_user_id)
 
     async def revoke_all_for_user(self, telegram_user_id: int) -> None:
         # Keep the encrypted credential if the Telegram LogOut call fails:
@@ -260,9 +260,37 @@ class MTProtoAuthManager:
             await state.client.disconnect()
             state.encrypted_session = None
 
+    async def close_scan_session(self, telegram_user_id: int, client: Optional[TelegramClient] = None) -> bool:
+        """Revoke the temporary MTProto authorization and erase its on-disk secret.
+
+        A positive result means Telegram acknowledged LogOutRequest, not merely
+        that the transport disconnected. Even when Telegram is unreachable the
+        encrypted local session is removed; users must check active devices.
+        """
+        confirmed = False
+        try:
+            if client is None:
+                saved = self._store.load(telegram_user_id)
+                if saved:
+                    client = self._new_client(saved)
+            if client is not None:
+                try:
+                    await self.terminate_client_session(client)
+                    confirmed = True
+                except Exception:
+                    # Do not expose Telegram session details in the logs.
+                    confirmed = False
+        finally:
+            self._store.delete(telegram_user_id)
+            for auth_id, state in list(self._sessions.items()):
+                if state.telegram_user_id == telegram_user_id:
+                    state.encrypted_session = None
+                    self._sessions.pop(auth_id, None)
+        return confirmed
+
     @staticmethod
     async def terminate_client_session(client: TelegramClient) -> None:
-        """Explicit LogOut only; never call after ordinary analysis or cancellation."""
+        """Only an acknowledged Telegram LogOutRequest counts as successful."""
         try:
             if not client.is_connected():
                 await client.connect()

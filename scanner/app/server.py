@@ -87,13 +87,14 @@ async def resolve_chat_names(req: ResolveNamesReq) -> dict:
     try:
         client = auth_manager.build_client_for_scan(req.telegram_user_id)
     except PermissionError:
-        raise HTTPException(status_code=403, detail="Telegram session unavailable")
+        # Once the scanner has logged out, unmasking is intentionally unavailable.
+        return {"names": {}}
     result: dict[str, str] = {}
     await client.connect()
     try:
         me = await client.get_me()
         if not me or me.id != req.telegram_user_id:
-            raise HTTPException(status_code=403, detail="Telegram session mismatch")
+            return {"names": {}}
         async for dialog in client.iter_dialogs():
             digest = hashlib.sha256(
                 f"{req.telegram_user_id}:{dialog.id}".encode("utf-8")
@@ -183,6 +184,9 @@ async def scan_cancel(req: ScanCancelReq) -> dict:
         resume_ev = active_resume_events.get(req.job_id)
         if resume_ev is not None:
             resume_ev.set()
+    elif req.telegram_user_id not in active_job_user_ids.values():
+        # No running scan should leave an abandoned login session behind.
+        await auth_manager.close_scan_session(req.telegram_user_id)
     return {"cancelled": bool(ev)}
 
 
@@ -232,67 +236,76 @@ async def _post_callback(url: str, payload: dict) -> None:
 
 async def _run_scan_job(req: ScanStartReq, cancel_event: asyncio.Event, resume_event: asyncio.Event) -> None:
     client = None
+    final_status = "failed"
+    stats = None
+    error_message = "Ошибка сканирования. Попробуй повторить позже."
+    processed_dialogs = 0
+    total_dialogs = 0
+    outgoing = 0
+    session_closed = False
+
     try:
         async with scan_semaphore:
-            client = auth_manager.build_client_for_scan(req.telegram_user_id, req.auth_id)
-            await client.connect()
+            if cancel_event.is_set():
+                final_status = "cancelled"
+            else:
+                client = auth_manager.build_client_for_scan(req.telegram_user_id, req.auth_id)
+                await client.connect()
 
-            async def on_progress(p: dict) -> None:
-                await _post_callback(req.callback_url, p)
+                async def on_progress(payload: dict) -> None:
+                    await _post_callback(req.callback_url, payload)
 
-            analyzer = RecapAnalyzer(
-                TelethonAdapter(client),
-                checkpoint_store=checkpoint_store,
-                progress_cb=on_progress,
-                cancel_event=cancel_event,
-                resume_event=resume_event,
-            )
-            stats = await analyzer.run(
-                job_id=req.job_id,
-                year=req.year,
-                timezone_name=req.timezone,
-            )
-
-            final_status = "cancelled" if cancel_event.is_set() else stats["completionStatus"]
-            await _post_callback(
-                req.callback_url,
-                {
-                    "jobId": req.job_id,
-                    "telegramUserId": req.telegram_user_id,
-                    "year": req.year,
-                    "timezone": req.timezone,
-                    "status": final_status,
-                    "stage": "full_scan",
-                    "processedDialogs": stats["metrics"]["processedDialogs"],
-                    "totalEligibleDialogs": stats["metrics"]["totalEligibleDialogs"],
-                    "outgoingFound": stats["totalMessages"],
-                    "stats": stats if final_status in ("completed", "partial") else None,
-                },
-            )
-            if final_status == "completed":
-                checkpoint_store.delete(req.job_id)
-
+                analyzer = RecapAnalyzer(
+                    TelethonAdapter(client),
+                    checkpoint_store=checkpoint_store,
+                    progress_cb=on_progress,
+                    cancel_event=cancel_event,
+                    resume_event=resume_event,
+                )
+                stats = await analyzer.run(
+                    job_id=req.job_id,
+                    year=req.year,
+                    timezone_name=req.timezone,
+                )
+                final_status = "cancelled" if cancel_event.is_set() else stats["completionStatus"]
+                processed_dialogs = stats["metrics"]["processedDialogs"]
+                total_dialogs = stats["metrics"]["totalEligibleDialogs"]
+                outgoing = stats["totalMessages"]
+                if final_status == "completed":
+                    checkpoint_store.delete(req.job_id)
+    except asyncio.CancelledError:
+        final_status = "cancelled"
+        # A direct task cancellation still revokes MTProto in finally.
     except Exception as exc:
         logger.error("Scan job failed for job_id=%s: %s", req.job_id, type(exc).__name__)
-        await _post_callback(
-            req.callback_url,
-            {
-                "jobId": req.job_id,
-                "telegramUserId": req.telegram_user_id,
-                "year": req.year,
-                "timezone": req.timezone,
-                "status": "failed",
-                "stage": "full_scan",
-                "processedDialogs": 0,
-                "totalEligibleDialogs": 0,
-                "outgoingFound": 0,
-                "errorMessage": "Ошибка сканирования. Попробуй повторить позже.",
-            },
-        )
     finally:
-        active_cancel_events.pop(req.job_id, None)
-        active_resume_events.pop(req.job_id, None)
-        active_job_user_ids.pop(req.job_id, None)
-        active_tasks.pop(req.job_id, None)
-        if client is not None:
-            await client.disconnect()
+        # The final callback must happen only AFTER Telegram logout has been tried.
+        # Paused jobs never exit this function; their MTProto session stays alive.
+        try:
+            session_closed = await auth_manager.close_scan_session(req.telegram_user_id, client)
+        except Exception:
+            logger.error("Failed to remove temporary MTProto credential for job_id=%s", req.job_id)
+        payload = {
+            "jobId": req.job_id,
+            "telegramUserId": req.telegram_user_id,
+            "year": req.year,
+            "timezone": req.timezone,
+            "status": final_status,
+            "stage": "full_scan",
+            "processedDialogs": processed_dialogs,
+            "totalEligibleDialogs": total_dialogs,
+            "outgoingFound": outgoing,
+            "stats": stats if final_status in ("completed", "partial") else None,
+            "sessionClosed": session_closed,
+        }
+        if final_status == "failed":
+            payload["errorMessage"] = error_message
+        try:
+            await _post_callback(req.callback_url, payload)
+        except Exception:
+            logger.error("Could not deliver final scan callback for job_id=%s", req.job_id)
+        finally:
+            active_cancel_events.pop(req.job_id, None)
+            active_resume_events.pop(req.job_id, None)
+            active_job_user_ids.pop(req.job_id, None)
+            active_tasks.pop(req.job_id, None)
