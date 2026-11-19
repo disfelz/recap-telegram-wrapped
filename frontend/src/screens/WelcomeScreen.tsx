@@ -8,6 +8,8 @@ interface WelcomeScreenProps {
   availableYears: number[];
   onSelectYear: (year: number) => void;
   onStartConnect: () => void;
+  hasSavedRecap: boolean;
+  onOpenSavedRecap: () => void;
   onOpenDemoStories: () => void;
   demoEnabled: boolean;
 }
@@ -17,6 +19,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   availableYears,
   onSelectYear,
   onStartConnect,
+  hasSavedRecap,
+  onOpenSavedRecap,
   onOpenDemoStories,
   demoEnabled,
 }) => {
@@ -109,14 +113,25 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {hasSavedRecap && (
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              haptic('success');
+              onOpenSavedRecap();
+            }}
+          >
+            Смотреть RECAP {selectedYear} <ArrowRight size={17} />
+          </button>
+        )}
         <button
-          className="btn btn-primary"
+          className={hasSavedRecap ? 'btn btn-secondary' : 'btn btn-primary'}
           onClick={() => {
             haptic('medium');
             onStartConnect();
           }}
         >
-          Узнать свой год <ArrowRight size={17} />
+          {hasSavedRecap ? 'Начать новый анализ' : 'Узнать свой год'} <ArrowRight size={17} />
         </button>
 
         {demoEnabled && (
