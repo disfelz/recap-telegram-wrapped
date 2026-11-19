@@ -21,6 +21,7 @@ const THEMES=[
 const fmt=(x:number)=>x.toLocaleString('ru-RU');
 interface Props {
   stats:RecapStats; hideChatNames:boolean; onToggleHideNames:()=>void; onClose:()=>void;
+  demo?:boolean; onStartReal?:()=>void;
 }
 function Art({index,stats}:{index:number;stats:RecapStats}) {
   const reduce=useReducedMotion();
@@ -106,7 +107,7 @@ function Art({index,stats}:{index:number;stats:RecapStats}) {
     </motion.div>
   </div>;
 }
-export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNames,onClose})=>{
+export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNames,onClose,demo=false,onStartReal})=>{
   const [index,setIndex]=useState(0);
   const [exportFormat,setExportFormat]=useState<'story'|'square'|null>(null);
   const reduce=useReducedMotion();
@@ -162,6 +163,9 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
     onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
     <div className="v2-story-sparkles" aria-hidden="true">{Array.from({length:18},(_,i)=>
       <span key={i} style={{left:(i*61%97)+'%',top:(i*37%90)+'%',animationDelay:-(i%7)+'s'}}/>)}</div>
+    {demo&&<button type="button" className="v2-example-banner v2-example-story" onClick={onStartReal}>
+      Пример · нажми, чтобы посчитать свой год
+    </button>}
     <header className="v2-story-top">
       <div className="v2-segments" aria-label={'История '+(index+1)+' из '+slides.length}>
         {slides.map((_,i)=><div key={i} className={i<index?'done':i===index?'current':''}>
@@ -189,23 +193,24 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
             <span>Стикеры + GIF <b>{fmt(stats.stickerAndGifCount)}</b></span>
           </div>}
           {index===7&&<div className="v2-chats-preview">
-            <button type="button" onClick={onToggleHideNames}>
-              {hideChatNames?<Eye size={15}/>:<EyeOff size={15}/>} {hideChatNames?'Показать имена':'Скрыть имена'}
-            </button>
-            <div><span>Личный чат</span><b>{topPrivate?(hideChatNames?'Личный чат №1':topPrivate.displayLabel):'Нет данных'}</b></div>
+            <span className="v2-masked-note"><EyeOff size={15}/> Имена скрыты после выхода</span>
+            <div><span>Личный чат</span><b>{topPrivate?'Личный чат #1':'Нет данных'}</b></div>
             <div><span>Группа · {fmt(topGroup?.sentMessages||0)} исх.</span>
-              <b>{topGroup?(hideChatNames?'Группа №1':topGroup.displayLabel):'Нет данных'}</b></div>
+              <b>{topGroup?'Группа #1':'Нет данных'}</b></div>
           </div>}
         </section>}
       </motion.div>
     </AnimatePresence>
     <footer className="v2-story-actions">
-      {isFinal&&<div className="v2-export-row">
+      {isFinal&&demo&&<button type="button" className="v2-story-continue" onClick={onStartReal}>
+        Посчитать мой год <ArrowRight size={19}/>
+      </button>}
+      {isFinal&&!demo&&<div className="v2-export-row">
         <button type="button" onClick={()=>setExportFormat('story')}><Download size={16}/> 1080×1920</button>
         <button type="button" onClick={()=>setExportFormat('square')}><Download size={16}/> 1080×1080</button>
       </div>}
       <button type="button" className="v2-story-continue" onClick={next}>
-        {isFinal?<><BarChart3 size={19}/> Подробная статистика</>:<>Продолжить <ArrowRight size={19}/></>}
+        {isFinal?<><BarChart3 size={19}/> {demo?'Посмотреть аналитику примера':'Подробная статистика'}</>:<>Продолжить <ArrowRight size={19}/></>}
       </button>
       {index>0&&<button type="button" className="v2-story-back" onClick={back}><ArrowLeft size={17}/> Назад</button>}
     </footer>

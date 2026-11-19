@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Fingerprint, Sparkles } from 'lucide-react';
 import { haptic } from '../utils/telegram';
 
-interface Props { year:number; onReveal:()=>void; partial:boolean }
+interface Props { year:number; onReveal:()=>void; partial:boolean; demo?:boolean }
 const THRESHOLDS=[15,40,65,85];
 function Burst({onDone}:{onDone:()=>void}) {
   const canvas=useRef<HTMLCanvasElement>(null);
@@ -39,7 +39,7 @@ function Burst({onDone}:{onDone:()=>void}) {
   },[onDone]);
   return <canvas ref={canvas} className="v2-confetti" aria-hidden="true"/>;
 }
-export const HoldScreen:React.FC<Props>=({year,onReveal,partial})=>{
+export const HoldScreen:React.FC<Props>=({year,onReveal,partial,demo=false})=>{
   const reduce=useReducedMotion();
   const [progress,setProgress]=useState(0);
   const [finished,setFinished]=useState(false);
@@ -83,6 +83,7 @@ export const HoldScreen:React.FC<Props>=({year,onReveal,partial})=>{
     <div className="v2-stars" aria-hidden="true">{Array.from({length:25},(_,i)=>
       <span key={i} style={{left:(i*41%97)+'%',top:(i*29%91)+'%',
         animationDelay:-(i%9)+'s',animationDuration:(7+i%7)+'s'}}/>)}</div>
+    {demo&&<div className="v2-example-banner">Пример · вымышленные данные</div>}
     <div className="v2-hold-head">
       <div className="v2-kicker"><Sparkles size={14}/> RECAP · {year}</div>
       <h1>Удержи палец,<br/><em>чтобы узнать итоги {year} года</em></h1>
@@ -111,7 +112,7 @@ export const HoldScreen:React.FC<Props>=({year,onReveal,partial})=>{
     <div className="v2-hold-footer">
       <strong className="v2-percent">{progress}%</strong>
       <span>{progress===0?'УДЕРЖИВАЙ':progress<55?'НЕ ОТПУСКАЙ':progress<100?'ЕЩЁ ЧУТЬ-ЧУТЬ':'ГОТОВО!'}</span>
-      <small>Всё, что ты увидишь, основано на твоих сообщениях.</small>
+      <small>{demo?'Примерные цифры — не твои сообщения.':'Всё, что ты увидишь, основано на твоих сообщениях.'}</small>
       <button type="button" className="v2-accessibility" onClick={complete}>Открыть без удержания</button>
     </div>
     {finished&&<Burst onDone={()=>callback.current()}/>}

@@ -56,12 +56,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
       <section className="flagship-welcome-copy">
         <span className="flagship-eyebrow">ТВОЯ ПЕРСОНАЛЬНАЯ ХРОНИКА</span>
-        <h1 className="display-font">Твой год.<br/>Твои сообщения.<br/><em>Твоя история.</em></h1>
-        <p>Что осталось между строк? Узнай, как ты общался, когда был на связи и какие моменты сделали твой год особенным.</p>
+        <h1 className="display-font">Твой настоящий<br/><em>год в Telegram.</em></h1>
+        <p>Не случайные цифры. Сообщения, активные дни, любимое время и твоя история за год.</p>
       </section>
 
       <section className="flagship-year-block" aria-label="Выбор года">
-        <div className="flagship-year-caption"><span>ВЫБЕРИ ГОД</span><span>01 — 03</span></div>
+        <div className="flagship-year-caption"><span>ВЫБЕРИ ГОД</span><span>2026 / 2025</span></div>
         <div className="flagship-year-list">
           {availableYears.map((year)=><button type="button" key={year} aria-pressed={selectedYear===year}
             onClick={()=>{haptic('selection');onSelectYear(year);}}>
@@ -73,17 +73,22 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       </section>
 
       <div className="flagship-welcome-actions">
-        {hasSavedRecap&&<button type="button" className="btn btn-primary" onClick={()=>{haptic('success');onOpenSavedRecap();}}>
-          Открыть мой RECAP {selectedYear}<ArrowRight size={18}/>
+        {demoEnabled&&<button type="button" className="btn btn-primary flagship-demo-main" onClick={()=>{haptic('medium');onOpenDemoStories();}}>
+          <Play size={18}/> Посмотреть живой пример <ArrowRight size={17}/>
         </button>}
-        <button type="button" className={hasSavedRecap?'btn btn-secondary':'btn btn-primary'}
-          onClick={()=>{haptic('medium');onStartConnect();}}>
-          {hasSavedRecap?`Начать новый анализ за ${selectedYear} год`:`Начать анализ за ${selectedYear} год`}<ArrowRight size={18}/>
+        {hasSavedRecap&&<button type="button" className="btn btn-secondary" onClick={()=>{haptic('success');onOpenSavedRecap();}}>
+          Открыть мой RECAP {selectedYear} <ArrowRight size={18}/>
+        </button>}
+        <button type="button" className="btn btn-secondary" onClick={()=>{haptic('medium');onStartConnect();}}>
+          Узнать свой год <ArrowRight size={18}/>
         </button>
-        {demoEnabled&&<button type="button" className="flagship-demo-link" onClick={()=>{haptic('light');onOpenDemoStories();}}>
-          <Play size={14}/> Посмотреть демо-историю <span>↗</span>
-        </button>}
       </div>
+
+      <section className="v2-trust-explain">
+        <h2>Почему здесь нужен вход?</h2>
+        <p>Telegram не отдаёт ботам историю сообщений. Сервисы «без входа» не могут посчитать твои реальные сообщения и иногда показывают выдуманные цифры. Мы считаем настоящие сообщения через временный сеанс и сразу после подсчёта выходим из аккаунта.</p>
+        <small>Если Telegram не подтвердит выход, мы предупредим. Активные сеансы можно проверить в Настройки → Устройства.</small>
+      </section>
 
       <div className="flagship-privacy-note">
         <div><ShieldCheck size={16}/><span>Только исходящие сообщения</span></div>
