@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { CountUp } from '../components/CountUp';
-import { AlertTriangle, Download, Eye, EyeOff, Play, Share2 } from 'lucide-react';
+import { AlertTriangle, Download, Eye, EyeOff, Play, RotateCcw, Share2 } from 'lucide-react';
 import type { MessageKind, RecapStats, TopChatStat } from '../../../shared/types';
-import { downloadOrShareCard } from '../utils/exportCard';
+import { CardExportDialog } from '../components/CardExportDialog';
 import { haptic } from '../utils/telegram';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
@@ -18,7 +18,7 @@ const fmt = (v:number) => v.toLocaleString('ru-RU');
 
 interface Props {
   stats:RecapStats; prevYearStats?:RecapStats; availableYears:number[]; selectedYear:number;
-  hideChatNames:boolean; onSelectYear:(n:number)=>void; onToggleHideNames:()=>void; onOpenStories:()=>void;
+  hideChatNames:boolean; onSelectYear:(n:number)=>void; onToggleHideNames:()=>void; onOpenStories:()=>void; onStartNewAnalysis:()=>void;
 }
 function Chats({items,hidden,group}:{items:TopChatStat[];hidden:boolean;group:boolean}) {
   const max=Math.max(1,...items.map((x)=>x.sentMessages));
@@ -30,13 +30,14 @@ function Chats({items,hidden,group}:{items:TopChatStat[];hidden:boolean;group:bo
   </div>;
 }
 export const AnalyticsScreen:React.FC<Props>=({
-  stats,prevYearStats,availableYears,selectedYear,hideChatNames,onSelectYear,onToggleHideNames,onOpenStories
+  stats,prevYearStats,availableYears,selectedYear,hideChatNames,onSelectYear,onToggleHideNames,onOpenStories,onStartNewAnalysis
 })=>{
   const reduceMotion=useReducedMotion();
   const peakMonth=stats.byMonth.indexOf(Math.max(...stats.byMonth));
   const peakHour=stats.byHour.indexOf(Math.max(...stats.byHour));
   const [month,setMonth]=useState(peakMonth),[hour,setHour]=useState(peakHour);
-  const [kind,setKind]=useState<MessageKind>('text'),[weekday,setWeekday]=useState<number|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const [kind,setKind]=useState<MessageKind>('text'),[weekday,setWeekday]=useState<number|null>(null);
+  const [exportSelection,setExportSelection]=useState<{format:'story'|'square';action:'download'|'share'}|null>(null);
   useEffect(()=>{setMonth(peakMonth);setHour(peakHour);setKind('text');setWeekday(null);},[stats.year]);
   const maxMonth=Math.max(1,...stats.byMonth), maxDay=Math.max(1,...stats.byWeekday), maxHour=Math.max(1,...stats.byHour);
   const totalKinds=Object.values(stats.byKind).reduce((a,v)=>a+v,0);
@@ -47,11 +48,9 @@ export const AnalyticsScreen:React.FC<Props>=({
   const yoy=prevYearStats&&prevYearStats.totalMessages>0?Math.round((stats.totalMessages/prevYearStats.totalMessages-1)*100):null;
   const selectedMonthShare=stats.totalMessages?((stats.byMonth[month]||0)/stats.totalMessages*100).toFixed(1):'0.0';
   const chatCount=stats.metrics.totalEligibleDialogs||stats.metrics.processedDialogs;
-  async function exportPng(format:'story'|'square',action:'download'|'share'='download'){
-    if(busy)return;
-    setBusy(true);setError('');haptic('medium');
-    try{await downloadOrShareCard(stats,format,true,action);}catch{setError('Не удалось создать PNG. Попробуй ещё раз.');}
-    finally{setBusy(false);}
+  function exportPng(format:'story'|'square',action:'download'|'share'='download'){
+    haptic('medium');
+    setExportSelection({format,action});
   }
   return <main className="screen ref-analytics">
     <header className="ref-analytics-head">
@@ -141,11 +140,16 @@ export const AnalyticsScreen:React.FC<Props>=({
     </section>
     <section className="ref-panel ref-exports"><div><h2>Экспорт открытки PNG</h2><p>Без имён и ID</p></div>
       <div className="ref-export-grid">
-        <button type="button" disabled={busy} onClick={()=>void exportPng('story')}><Download size={14}/> 1080×1920</button>
-        <button type="button" disabled={busy} onClick={()=>void exportPng('square')}><Download size={14}/> 1080×1080</button>
+        <button type="button" onClick={()=>exportPng('story')}><Download size={14}/> 1080×1920</button>
+        <button type="button" onClick={()=>exportPng('square')}><Download size={14}/> 1080×1080</button>
         <button type="button" onClick={()=>{haptic('light');onOpenStories();}}><Play size={14}/> Пересмотреть истории</button>
-        <button type="button" disabled={busy} onClick={()=>void exportPng('story','share')}><Share2 size={14}/> Поделиться</button>
-      </div>{error&&<p role="alert" className="ref-error">{error}</p>}
+        <button type="button" onClick={()=>exportPng('story','share')}><Share2 size={14}/> Поделиться</button>
+      </div>
     </section>
+    <button type="button" className="btn btn-secondary" onClick={()=>{haptic('medium');onStartNewAnalysis();}}>
+      <RotateCcw size={16}/> Начать новый анализ за {selectedYear}
+    </button>
+    {exportSelection&&<CardExportDialog stats={stats} format={exportSelection.format}
+      requestedAction={exportSelection.action} onClose={()=>setExportSelection(null)}/>}
   </main>;
 };
