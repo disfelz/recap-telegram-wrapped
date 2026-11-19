@@ -543,5 +543,6 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
           {renderSlide()}
         </motion.div>
       </AnimatePresence>
-    </div>
-  };
+    </motion.div>
+  );
+};
