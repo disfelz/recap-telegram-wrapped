@@ -14,5 +14,6 @@ COPY app ./app
 RUN useradd -m scanner && mkdir -p /tmp/recap_checkpoints && chown -R scanner:scanner /tmp/recap_checkpoints
 USER scanner
 
-EXPOSE 8080
-CMD ["uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8080"]
+EXPOSE 10000
+# Render sets PORT dynamically (10000 by default). Run the scanner on that port.
+CMD ["sh", "-c", "exec uvicorn app.server:app --host 0.0.0.0 --port ${PORT:-10000}"]
