@@ -84,7 +84,9 @@ export default function App() {
           setScreen('scan');
           startScanPolling(job.jobId);
         } else if (new URLSearchParams(window.location.search).get('screen') === 'stories') {
-          const ready = results.find((r) => r.completionStatus === 'completed') ?? results[0];
+          const yearParam = Number(new URLSearchParams(window.location.search).get('year'));
+          const ready = results.find((r) => r.year === yearParam) ??
+            results.find((r) => r.completionStatus === 'completed') ?? results[0];
           if (ready) {
             setSelectedYear(ready.year);
             setScreen('stories');
