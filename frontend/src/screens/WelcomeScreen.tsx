@@ -78,7 +78,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         </button>}
         <button type="button" className={hasSavedRecap?'btn btn-secondary':'btn btn-primary'}
           onClick={()=>{haptic('medium');onStartConnect();}}>
-          {hasSavedRecap?'Начать новый анализ':'Узнать свой год'}<ArrowRight size={18}/>
+          {hasSavedRecap?`Начать новый анализ за ${selectedYear} год`:`Начать анализ за ${selectedYear} год`}<ArrowRight size={18}/>
         </button>
         {demoEnabled&&<button type="button" className="flagship-demo-link" onClick={()=>{haptic('light');onOpenDemoStories();}}>
           <Play size={14}/> Посмотреть демо-историю <span>↗</span>
