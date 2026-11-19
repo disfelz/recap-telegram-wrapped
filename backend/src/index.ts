@@ -580,4 +580,11 @@ export default {
 
     return jsonResponse({ error: 'Not Found' }, 404, corsOrigin);
   },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Short-lived contact exchange data is physically removed even when a
+    // user leaves the app after sharing their phone number.
+    ctx.waitUntil(env.DB.prepare(
+      'DELETE FROM phone_contact_requests WHERE expires_at <= ?'
+    ).bind(new Date().toISOString()).run().then(() => undefined));
+  },
 };
