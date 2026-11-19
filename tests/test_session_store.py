@@ -39,3 +39,14 @@ def test_deleting_one_session_does_not_affect_other_users(tmp_path):
     store.delete(111)
     assert store.load(111) is None
     assert store.load(222) == "SESSION-222"
+
+
+def test_expired_scan_session_file_is_removed_from_disk(tmp_path):
+    store = make_store(tmp_path)
+    store.save(987, "TEMPORARY-CREDENTIAL")
+    assert store._path(987).is_file()
+    store.delete(987)
+    assert not store._path(987).exists()
+    assert store.load(987) is None
+    # Deleting an already revoked session is safe and idempotent.
+    store.delete(987)

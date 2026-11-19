@@ -272,6 +272,12 @@ async def test_5_and_6_interrupt_mid_page_and_resume_no_duplicates(tmp_path: Pat
     )
     assert partial_res["completionStatus"] == "partial"
     assert 0 < partial_res["totalMessages"] < expected_own
+    # The same checkpoint can be reopened using a completely new Telegram login:
+    # no counted messages can be counted again.
+    checkpoint = store.load("t56")
+    assert checkpoint is not None
+    assert checkpoint.total_messages == partial_res["totalMessages"]
+    assert checkpoint.dialogs[peer_id].cursor_offset_id >= 0
 
     analyzer2 = RecapAnalyzer(source, store, page_limit=100)
     final_res = await analyzer2.run(job_id="t56", year=2026, timezone_name="UTC", resume=True)
