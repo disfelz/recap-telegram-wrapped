@@ -87,12 +87,12 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
   const voiceMinutes =
     stats.voiceTotalDurationSec !== null ? Math.round(stats.voiceTotalDurationSec / 60) : null;
 
-  const handleExport = async (fmt: 'story' | 'square') => {
+  const handleExport = async (fmt: 'story' | 'square', action: 'download' | 'share' = 'download') => {
     try {
       setExporting(true);
       setExportError('');
       haptic('medium');
-      await downloadOrShareCard(stats, fmt, true);
+      await downloadOrShareCard(stats, fmt, true, action);
     } catch {
       setExportError('Не удалось сформировать открытку. Попробуй ещё раз.');
     } finally {
@@ -469,7 +469,7 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
                 <button type="button" className="ref-story-btn" disabled={exporting}
                   onClick={(e)=>{e.stopPropagation();void handleExport('square');}}><Download size={14}/> 1:1 (1080×1080)</button>
                 <button type="button" className="ref-story-btn" disabled={exporting}
-                  onClick={(e)=>{e.stopPropagation();void handleExport('story');}}><Share2 size={14}/> Поделиться</button>
+                  onClick={(e)=>{e.stopPropagation();void handleExport('story', 'share');}}><Share2 size={14}/> Поделиться</button>
                 <button type="button" className="ref-story-btn"
                   onClick={(e)=>{e.stopPropagation();onClose();}}><BarChart3 size={14}/> Аналитика</button>
               </div>
