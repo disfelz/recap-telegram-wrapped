@@ -1,4 +1,5 @@
 import type { RecapStats } from '../../../shared/types';
+import { pluralRu } from './pluralRu';
 
 export type CardFormat = 'story' | 'square';
 export type ExportAction = 'download' | 'share';
@@ -79,7 +80,7 @@ export async function renderRecapCardPng(stats:RecapStats,format:CardFormat,hide
   const peakMonth=MONTHS[stats.byMonth.indexOf(Math.max(...stats.byMonth))]||'—';
   const boxes=[
     {label:'ПИКОВЫЙ МЕСЯЦ',value:peakMonth},
-    {label:'АКТИВНЫХ ДНЕЙ',value:fmt(stats.activeDays)+' · серия '+stats.longestStreakDays+'д'},
+    {label:'АКТИВНОСТЬ И СЕРИЯ',value:fmt(stats.activeDays)+' '+pluralRu(stats.activeDays,['день','дня','дней'])+' · '+stats.longestStreakDays+' '+pluralRu(stats.longestStreakDays,['день','дня','дней'])},
   ];
   boxes.forEach((box,i)=>{
     const bx=x+i*(chipW+chipGap);

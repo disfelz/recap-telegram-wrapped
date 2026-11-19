@@ -7,7 +7,15 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
+from fastapi import HTTPException
+from telethon.errors import (
+    FloodWaitError,
+    PasswordHashInvalidError,
+    PhoneCodeExpiredError,
+    PhoneCodeInvalidError,
+    PhoneNumberInvalidError,
+    SessionPasswordNeededError,
+)
 from telethon.sessions import StringSession
 from telethon.tl.functions.auth import LogOutRequest
 
@@ -38,6 +46,42 @@ class MTProtoAuthManager:
         self._store = store
         self._sessions: Dict[str, PendingAuth] = {}
 
+    @staticmethod
+    def _friendly_auth_error(error: Exception) -> None:
+        """Map common Telegram RPC errors to safe, actionable HTTP responses."""
+        if isinstance(error, FloodWaitError):
+            seconds = max(1, int(error.seconds))
+            raise HTTPException(
+                status_code=429,
+                detail=f"Telegram ограничил попытки входа. Повтори через {seconds} сек.",
+                headers={"Retry-After": str(seconds)},
+            ) from error
+        messages = {
+            PhoneNumberInvalidError: "Неверный номер телефона. Проверь код страны и цифры.",
+            PhoneCodeInvalidError: "Неверный код из Telegram. Проверь цифры и попробуй снова.",
+            PhoneCodeExpiredError: "Срок действия кода истёк. Запроси новый код.",
+            PasswordHashInvalidError: "Неверный облачный пароль Telegram. Попробуй ещё раз.",
+        }
+        for error_type, message in messages.items():
+            if isinstance(error, error_type):
+                raise HTTPException(status_code=400, detail=message) from error
+        raise error
+
+    async def _expire_pending(self) -> None:
+        """Disconnect temporary login clients after ten minutes of inactivity."""
+        cutoff = time.time() - 600
+        expired = [auth_id for auth_id, state in self._sessions.items()
+                   if state.created_at < cutoff]
+        for auth_id in expired:
+            state = self._sessions.pop(auth_id, None)
+            if state is None:
+                continue
+            state.encrypted_session = None
+            try:
+                await state.client.disconnect()
+            except Exception:
+                pass
+
     def _new_client(self, session_str: str = "") -> TelegramClient:
         return TelegramClient(
             StringSession(session_str),
@@ -51,9 +95,18 @@ class MTProtoAuthManager:
         )
 
     async def start_qr_login(self, telegram_user_id: int) -> dict:
+        await self._expire_pending()
         client = self._new_client()
-        await client.connect()
-        qr_login = await client.qr_login()
+        try:
+            await client.connect()
+            qr_login = await client.qr_login()
+        except (FloodWaitError, PhoneNumberInvalidError, PhoneCodeInvalidError,
+                PhoneCodeExpiredError, PasswordHashInvalidError) as exc:
+            await client.disconnect()
+            self._friendly_auth_error(exc)
+        except Exception:
+            await client.disconnect()
+            raise
 
         auth_id = str(uuid.uuid4())
         state = PendingAuth(
@@ -86,15 +139,25 @@ class MTProtoAuthManager:
             await state.client.disconnect()
 
     async def get_qr_status(self, telegram_user_id: int, auth_id: str) -> dict:
+        await self._expire_pending()
         state = self._sessions.get(auth_id)
         if not state or state.telegram_user_id != telegram_user_id:
             return {"status": "not_found"}
         return {"status": state.status}
 
     async def start_phone_login(self, telegram_user_id: int, phone: str) -> dict:
+        await self._expire_pending()
         client = self._new_client()
-        await client.connect()
-        sent = await client.send_code_request(phone)
+        try:
+            await client.connect()
+            sent = await client.send_code_request(phone)
+        except (PhoneNumberInvalidError, PhoneCodeInvalidError, PhoneCodeExpiredError,
+                PasswordHashInvalidError, FloodWaitError) as exc:
+            await client.disconnect()
+            self._friendly_auth_error(exc)
+        except Exception:
+            await client.disconnect()
+            raise
 
         auth_id = str(uuid.uuid4())
         self._sessions[auth_id] = PendingAuth(
@@ -114,6 +177,7 @@ class MTProtoAuthManager:
         code: Optional[str] = None,
         password: Optional[str] = None,
     ) -> dict:
+        await self._expire_pending()
         state = self._sessions.get(auth_id)
         if not state or state.telegram_user_id != telegram_user_id:
             return {"status": "not_found"}
@@ -135,6 +199,12 @@ class MTProtoAuthManager:
         except SessionPasswordNeededError:
             state.status = "needs_2fa"
             return {"status": "needs_2fa", "authId": auth_id}
+        except (PhoneNumberInvalidError, PhoneCodeInvalidError, PhoneCodeExpiredError,
+                PasswordHashInvalidError, FloodWaitError) as exc:
+            if isinstance(exc, PhoneCodeExpiredError):
+                self._sessions.pop(auth_id, None)
+                await state.client.disconnect()
+            self._friendly_auth_error(exc)
 
     async def _finalize_auth(self, state: PendingAuth) -> None:
         me = await state.client.get_me()

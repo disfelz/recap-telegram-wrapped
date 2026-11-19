@@ -5,6 +5,7 @@ import type { RecapStats } from '../../../shared/types';
 import { CountUp } from '../components/CountUp';
 import { CardExportDialog } from '../components/CardExportDialog';
 import { haptic } from '../utils/telegram';
+import { pluralRu } from '../utils/pluralRu';
 
 const MONTHS=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const DAYS=['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
@@ -88,12 +89,20 @@ function Art({index,stats}:{index:number;stats:RecapStats}) {
       transition={{duration:6,repeat:Infinity}}><Sparkles size={143} strokeWidth={.9}/></motion.div>
     <div className="v2-persona-pills">{stats.persona.traits.slice(0,3).map((trait,i)=><span key={i}>{trait}</span>)}</div>
   </div>;
+  const topMonth=stats.byMonth.indexOf(Math.max(...stats.byMonth));
+  const bestMonth=stats.byMonth[topMonth]>0?MONTHS[topMonth]:'—';
   return <div className="v2-art v2-art-finale">
-    <motion.div className="v2-finale-card" initial={reduce?false:{rotateY:80,opacity:0}}
-      animate={{rotateY:0,opacity:1}} transition={{duration:1.1,type:'spring'}}>
-      <small>RECAP / {stats.year}</small><b>{fmt(stats.totalMessages)}</b>
-      <span>ТВОИХ СООБЩЕНИЙ</span>
-      <div><CalendarDays size={22}/>{stats.activeDays} активных дней</div>
+    <motion.div className="v2-finale-card" initial={reduce?false:{rotateY:45,opacity:0}}
+      animate={{rotateY:0,opacity:1}} transition={{duration:reduce?0:.35}}>
+      <small>RECAP / {stats.year}</small>
+      <b>{fmt(stats.totalMessages)}</b>
+      <span>{pluralRu(stats.totalMessages,['сообщение','сообщения','сообщений'])} за год</span>
+      <div className="v2-finale-details">
+        <span><em>Активность</em><strong>{fmt(stats.activeDays)} {pluralRu(stats.activeDays,['активный день','активных дня','активных дней'])}</strong></span>
+        <span><em>Лучший месяц</em><strong>{bestMonth}</strong></span>
+        <span><em>Лучшая серия</em><strong>{stats.longestStreakDays} {pluralRu(stats.longestStreakDays,['день','дня','дней'])}</strong></span>
+      </div>
+      <div className="v2-finale-archetype"><em>Твой архетип</em><strong>{stats.persona.title}</strong></div>
     </motion.div>
   </div>;
 }
@@ -111,17 +120,17 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
   const voiceDuration=stats.voiceTotalDurationSec === null ? null : Math.round(stats.voiceTotalDurationSec/60);
   const topPrivate=stats.topPrivateChats[0],topGroup=stats.topGroupChats[0];
   const slides=[
-    {title:stats.totalMessages?'Ты не молчал!':'Твой год начинается здесь',sub:'Все сообщения, которые ты отправил за год.',number:stats.totalMessages,label:'сообщений'},
-    {title:maxMonth? 'Твой самый громкий месяц':'Без месячных рекордов',sub:maxMonth?MONTHS[peakMonth]+' был особенно активным.':'Отправленных сообщений за год пока нет.',number:maxMonth,label:'сообщений за месяц'},
-    {title:maxDay?'Твой день недели':'Неделя без рекордов',sub:maxDay?'Больше всего сообщений в '+DAYS[peakDay].toLowerCase()+'.':'Нечего сравнить — сообщений пока нет.',number:maxDay,label:'сообщений за день недели'},
-    {title:maxHour?'Твоё любимое время':'Пикового часа пока нет',sub:maxHour?'Чаще всего ты писал с '+String(peakHour).padStart(2,'0')+':00 до '+String((peakHour+1)%24).padStart(2,'0')+':00.':'Отправленных сообщений пока нет.',number:maxHour,label:'сообщений в этот час'},
-    {title:stats.voiceCount?'Живой голос':'Голосовые? Пока нет',sub:voiceDuration===null?'Считаем голосовые, без прослушивания.':'По метаданным: '+fmt(voiceDuration)+' мин.',number:stats.voiceCount,label:'голосовых'},
-    {title:stats.videoNoteCount?'Кружок за кружком':'Без кружочков',sub:'Видеоcообщения, которые ты отправлял.',number:stats.videoNoteCount,label:'кружков'},
+    {title:stats.totalMessages?'Ты не молчал!':'Твой год начинается здесь',sub:'Все сообщения, которые ты отправил за год.',number:stats.totalMessages,label:pluralRu(stats.totalMessages,['сообщение','сообщения','сообщений'])},
+    {title:maxMonth? 'Твой самый громкий месяц':'Без месячных рекордов',sub:maxMonth?MONTHS[peakMonth]+' был особенно активным.':'Отправленных сообщений за год пока нет.',number:maxMonth,label:pluralRu(maxMonth,['сообщение','сообщения','сообщений'])+' за месяц'},
+    {title:maxDay?'Твой день недели':'Неделя без рекордов',sub:maxDay?'Больше всего сообщений в '+DAYS[peakDay].toLowerCase()+'.':'Нечего сравнить — сообщений пока нет.',number:maxDay,label:pluralRu(maxDay,['сообщение','сообщения','сообщений'])+' за день недели'},
+    {title:maxHour?'Твоё любимое время':'Пикового часа пока нет',sub:maxHour?'Чаще всего ты писал с '+String(peakHour).padStart(2,'0')+':00 до '+String((peakHour+1)%24).padStart(2,'0')+':00.':'Отправленных сообщений пока нет.',number:maxHour,label:pluralRu(maxHour,['сообщение','сообщения','сообщений'])+' в этот час'},
+    {title:stats.voiceCount?'Живой голос':'Голосовые? Пока нет',sub:voiceDuration===null?'Считаем голосовые, без прослушивания.':'По метаданным: '+fmt(voiceDuration)+' мин.',number:stats.voiceCount,label:pluralRu(stats.voiceCount,['голосовое','голосовых','голосовых'])},
+    {title:stats.videoNoteCount?'Кружок за кружком':'Без кружочков',sub:'Видеоcообщения, которые ты отправлял.',number:stats.videoNoteCount,label:pluralRu(stats.videoNoteCount,['кружок','кружка','кружков'])},
     {title:'И не только текст',sub:'Фото, видео, стикеры и GIF — всё по метаданным.',number:stats.photoCount+stats.videoCount+stats.stickerAndGifCount,label:'медиафайлов и стикеров'},
-    {title:'Главные переписки',sub:'Рейтинг только по твоим отправленным сообщениям.',number:(topPrivate?.sentMessages||0),label:'сообщений в самом активном личном чате'},
-    {title:stats.longestStreakDays?'Без пауз!':'Без длинных серий',sub:stats.longestStreakRange?stats.longestStreakRange.start+' — '+stats.longestStreakRange.end:'Серия считается по дням с исходящими сообщениями.',number:stats.longestStreakDays,label:'дней подряд'},
-    {title:'Твой вайб года',sub:stats.persona.subtitle,number:stats.activeDays,label:'дней с сообщениями'},
-    {title:'Этот год — твой',sub:'И это только твои настоящие цифры.',number:stats.totalMessages,label:'отправленных сообщений'},
+    {title:'Главные переписки',sub:'Рейтинг только по твоим отправленным сообщениям.',number:(topPrivate?.sentMessages||0),label:pluralRu(topPrivate?.sentMessages||0,['сообщение','сообщения','сообщений'])+' в самом активном личном чате'},
+    {title:stats.longestStreakDays?'Без пауз!':'Без длинных серий',sub:stats.longestStreakRange?stats.longestStreakRange.start+' — '+stats.longestStreakRange.end:'Серия считается по дням с исходящими сообщениями.',number:stats.longestStreakDays,label:pluralRu(stats.longestStreakDays,['день подряд','дня подряд','дней подряд'])},
+    {title:'Твой вайб года',sub:stats.persona.subtitle,number:stats.activeDays,label:pluralRu(stats.activeDays,['активный день','активных дня','активных дней'])+' с сообщениями'},
+    {title:'Этот год — твой',sub:'И это только твои настоящие цифры.',number:stats.totalMessages,label:''},
   ];
   const next=()=>{haptic('light');if(index>=slides.length-1)onClose();else setIndex(v=>v+1);};
   const back=()=>{haptic('light');setIndex(v=>Math.max(0,v-1));};
@@ -160,16 +169,16 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
       </div>
       <button type="button" className="v2-story-x" onClick={onClose} aria-label="Закрыть истории"><X size={20}/></button>
     </header>
-    <AnimatePresence mode="popLayout" initial={false}>
-      <motion.div key={index} className="v2-story-slide" initial={reduce?false:{opacity:0,x:45}}
-        animate={{opacity:1,x:0}} exit={reduce?{}:{opacity:0,x:-40}} transition={{duration:reduce?0:.26}}>
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div key={index} className="v2-story-slide" initial={reduce?false:{opacity:0,x:14,y:5}}
+        animate={{opacity:1,x:0,y:0}} exit={reduce?{}:{opacity:0,x:-12,y:-4}} transition={{duration:reduce?0:.2,ease:'easeOut'}}>
         <div className="v2-story-heading">
           {stats.completionStatus==='partial'&&(index===0||isFinal)&&<span className="v2-partial">Частичная статистика</span>}
           <span className="v2-kicker">RECAP · {stats.year} / {String(index+1).padStart(2,'0')}</span>
           <h1>{slides[index].title}</h1><p>{slides[index].sub}</p>
         </div>
         <Art index={index} stats={stats}/>
-        <section className="v2-story-number">
+        {!isFinal&&<section className="v2-story-number">
           {index===9&&<h2 className="v2-persona-title">{stats.persona.title}</h2>}
           <strong><CountUp value={slides[index].number} durationMs={950}/></strong>
           <span>{slides[index].label}</span>
@@ -186,7 +195,7 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
             <div><span>Группа · {fmt(topGroup?.sentMessages||0)} исх.</span>
               <b>{topGroup?(hideChatNames?'Группа №1':topGroup.displayLabel):'Нет данных'}</b></div>
           </div>}
-        </section>
+        </section>}
       </motion.div>
     </AnimatePresence>
     <footer className="v2-story-actions">

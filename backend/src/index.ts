@@ -27,7 +27,8 @@ async function proxyToScanner(
   env: Env,
   path: string,
   method: string,
-  body?: unknown
+  body?: unknown,
+  signal?: AbortSignal
 ): Promise<Response> {
   const res = await fetch(`${env.SCANNER_BASE_URL}${path}`, {
     method,
@@ -36,6 +37,7 @@ async function proxyToScanner(
       Authorization: `Bearer ${env.SCANNER_SHARED_SECRET}`,
     },
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
   const text = await res.text();
   return new Response(text, {
@@ -224,7 +226,7 @@ export default {
         let authorized = false;
         try {
           const res = await proxyToScanner(env,
-            `/internal/auth/status?telegram_user_id=${user.id}`, 'GET');
+            `/internal/auth/status?telegram_user_id=${user.id}`, 'GET', undefined, AbortSignal.timeout(2500));
           if (!res.ok) throw new Error('scanner unavailable');
           const state = (await res.json()) as { authorized: boolean };
           authorized = state.authorized;
@@ -411,7 +413,7 @@ export default {
         try {
           await env.DB.prepare(
             `UPDATE scan_jobs SET status = 'queued', stage = 'quick_preview',
-             error_message = NULL, flood_wait_until = NULL, updated_at = ?
+             error_message = NULL, flood_wait_until = NULL, notified_at = NULL, updated_at = ?
              WHERE id = ? AND telegram_user_id = ?`
           ).bind(new Date().toISOString(), body.jobId, user.id).run();
         } catch {
@@ -586,5 +588,15 @@ export default {
     ctx.waitUntil(env.DB.prepare(
       'DELETE FROM phone_contact_requests WHERE expires_at <= ?'
     ).bind(new Date().toISOString()).run().then(() => undefined));
+    // Keep the health endpoint responsive on hosts that idle unused scanners.
+    // A failed ping must never block the scheduled cleanup task.
+    ctx.waitUntil(fetch(`${env.SCANNER_BASE_URL}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    }).then(response => {
+      if (!response.ok) console.warn('Scanner health ping failed', response.status);
+    }).catch(() => {
+      console.warn('Scanner health ping temporarily unavailable');
+    }));
   },
 };

@@ -5,6 +5,7 @@ import { AlertTriangle, Download, Eye, EyeOff, Play, RotateCcw, Share2 } from 'l
 import type { MessageKind, RecapStats, TopChatStat } from '../../../shared/types';
 import { CardExportDialog } from '../components/CardExportDialog';
 import { haptic } from '../utils/telegram';
+import { pluralRu } from '../utils/pluralRu';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
@@ -24,7 +25,7 @@ function Chats({items,hidden,group}:{items:TopChatStat[];hidden:boolean;group:bo
   const max=Math.max(1,...items.map((x)=>x.sentMessages));
   return <div className="ref-chats">{items.length===0 && <p className="ref-sub">Нет доступных данных</p>}
     {items.slice(0,5).map((x,i)=><div key={x.chatHash} className="ref-chat">
-      <div><span>{hidden?(group?'Группа ':'Личный чат ')+(i+1):x.displayLabel}</span><b>{fmt(x.sentMessages)}</b></div>
+      <div><span>{hidden?(group?'Группа ':'Личный чат ')+(i+1):x.displayLabel}</span><b title={fmt(x.sentMessages)+' '+pluralRu(x.sentMessages,['сообщение','сообщения','сообщений'])}>{fmt(x.sentMessages)}</b></div>
       <div className="ref-track"><span className={group?'ref-blue':''} style={{width:x.sentMessages/max*100+'%'}} /></div>
     </div>)}
   </div>;
@@ -66,18 +67,19 @@ export const AnalyticsScreen:React.FC<Props>=({
       <div className="ref-header-row"><span className="ref-overline">ВСЕГО ОТПРАВЛЕНО ЗА {stats.year}</span>
         {yoy!==null&&<span className="ref-compare">{yoy>0?'+':''}{yoy}% к {stats.year-1}</span>}</div>
       <strong className="ref-hero-total"><CountUp value={stats.totalMessages} durationMs={1050}/></strong>
+       <small className="ref-summary-total-label">{pluralRu(stats.totalMessages,['сообщение','сообщения','сообщений'])}</small>
       <div className="ref-summary-grid">
-        <div><b><CountUp value={stats.activeDays}/></b><small>акт. дней</small></div>
-        <div><b><CountUp value={stats.longestStreakDays}/>д</b><small>макс. серия</small></div>
-        <div><b><CountUp value={chatCount}/></b><small>чатов</small></div>
+        <div><b><CountUp value={stats.activeDays}/></b><small>{pluralRu(stats.activeDays,['активный день','активных дня','активных дней'])}</small></div>
+        <div><b><CountUp value={stats.longestStreakDays}/></b><small>{pluralRu(stats.longestStreakDays,['день','дня','дней'])} подряд</small></div>
+        <div><b><CountUp value={chatCount}/></b><small>{pluralRu(chatCount,['чат','чата','чатов'])}</small></div>
       </div>
     </section>
     <section className="ref-panel">
       <div className="ref-header-row"><div><h2>По месяцам</h2><p>Нажми на столбец для деталей</p></div>
-        <div className="ref-chart-detail"><b>{MONTHS[month]}</b><small>{fmt(stats.byMonth[month]||0)} ({selectedMonthShare}%)</small></div></div>
+        <div className="ref-chart-detail"><b>{MONTHS[month]}</b><small>{fmt(stats.byMonth[month]||0)} {pluralRu(stats.byMonth[month]||0,['сообщение','сообщения','сообщений'])} ({selectedMonthShare}%)</small></div></div>
       <div className="ref-months" role="group" aria-label="Активность по месяцам">
         {stats.byMonth.map((v,i)=><button className={month===i?'active':''} key={i} type="button"
-          aria-pressed={month===i} aria-label={MONTHS[i]+': '+fmt(v)} title={MONTHS[i]+': '+fmt(v)+' сообщений'} onMouseEnter={()=>setMonth(i)} onFocus={()=>setMonth(i)}
+          aria-pressed={month===i} aria-label={MONTHS[i]+': '+fmt(v)} title={MONTHS[i]+': '+fmt(v)+' '+pluralRu(v,['сообщение','сообщения','сообщений'])} onMouseEnter={()=>setMonth(i)} onFocus={()=>setMonth(i)}
           onClick={()=>{setMonth(i);haptic('selection');}}>
           <span className="ref-month-bar-container"><motion.span initial={reduceMotion?false:{scaleY:0}} animate={{scaleY:1}} transition={{duration:.55,delay:i*.035,ease:'easeOut'}} style={{height:Math.max(3,v/maxMonth*100)+'%',transformOrigin:'bottom center'}}/></span>
           <small>{MONTHS[i][0]}</small>
@@ -91,11 +93,11 @@ export const AnalyticsScreen:React.FC<Props>=({
       </button>)}
     </div></section>
     <section className="ref-panel">
-      <div className="ref-header-row"><h2>Активность по часам (00–23)</h2>
-        <div className="ref-chart-detail"><b>{String(hour).padStart(2,'0')}:00</b><small>· {fmt(stats.byHour[hour]||0)}</small></div></div>
+      <div className="ref-header-row ref-hours-header"><h2>Активность по часам (00–23)</h2>
+        <span className="ref-hour-detail">{String(hour).padStart(2,'0')}:00 · {fmt(stats.byHour[hour]||0)} сообщ.</span></div>
       <div className="ref-hours" role="group" aria-label="Активность по часам">
         {stats.byHour.map((v,i)=><button key={i} type="button" className={hour===i?'active':i<=4||i>=22?'night':''}
-          title={String(i).padStart(2,'0')+':00 — '+fmt(v)}
+          title={String(i).padStart(2,'0')+':00 — '+fmt(v)+' '+pluralRu(v,['сообщение','сообщения','сообщений'])}
           aria-pressed={hour===i} onMouseEnter={()=>setHour(i)} onFocus={()=>setHour(i)} onClick={()=>{setHour(i);haptic('selection');}}
           style={{background:'rgba(169,150,255,'+(0.13+0.8*v/maxHour).toFixed(2)+')'}}>
           {String(i).padStart(2,'0')}
@@ -103,7 +105,7 @@ export const AnalyticsScreen:React.FC<Props>=({
       </div><p className="ref-caption">Часовой пояс: {stats.timezone}</p>
     </section>
     <section className="ref-panel">
-      <div className="ref-header-row"><h2>Типы сообщений</h2><small className="ref-sub">Всего: {fmt(totalKinds)}</small></div>
+      <div className="ref-header-row"><h2>Типы сообщений</h2><small className="ref-sub">Всего: {fmt(totalKinds)} {pluralRu(totalKinds,['сообщение','сообщения','сообщений'])}</small></div>
       <div className="ref-kind-layout">
         <div className="ref-donut-area"><svg viewBox="0 0 116 116" className="ref-donut" role="img" aria-label="Доли типов сообщений">
           <circle cx="58" cy="58" r="47" fill="none" stroke="#28233a" strokeWidth="13"/>
