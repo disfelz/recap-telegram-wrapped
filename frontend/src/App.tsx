@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import './styles/reference.css';
+import './styles/flagship.css';
 import { Home, BarChart3, Sparkles, Settings } from 'lucide-react';
 import type { RecapStats, ScanProgressPayload } from '../../shared/types';
 import { recapApi } from './api/client';
