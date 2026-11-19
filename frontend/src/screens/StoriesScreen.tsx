@@ -209,9 +209,9 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
         <button type="button" onClick={()=>setExportFormat('story')}><Download size={16}/> 1080×1920</button>
         <button type="button" onClick={()=>setExportFormat('square')}><Download size={16}/> 1080×1080</button>
       </div>}
-      <button type="button" className="v2-story-continue" onClick={next}>
-        {isFinal?<><BarChart3 size={19}/> {demo?'Посмотреть аналитику примера':'Подробная статистика'}</>:<>Продолжить <ArrowRight size={19}/></>}
-      </button>
+      {(!isFinal||!demo)&&<button type="button" className="v2-story-continue" onClick={next}>
+        {isFinal?<><BarChart3 size={19}/> Подробная статистика</>:<>Продолжить <ArrowRight size={19}/></>}
+      </button>}
       {index>0&&<button type="button" className="v2-story-back" onClick={back}><ArrowLeft size={17}/> Назад</button>}
     </footer>
     {exportFormat&&<CardExportDialog stats={stats} format={exportFormat}
