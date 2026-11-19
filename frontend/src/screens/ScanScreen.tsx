@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, Pause, Play, Radio, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import type { ScanProgressPayload } from '../../../shared/types';
-import { CountUp } from '../components/CountUp';
 import { haptic } from '../utils/telegram';
 
 interface Props {
@@ -118,10 +117,10 @@ export const ScanScreen: React.FC<Props> = ({ progress, onPause, onUnpause, onCa
 
     <div className="flagship-scan-metrics">
       <div><span>ОБРАБОТАНО ЧАТОВ</span>
-        <strong className="tabular"><CountUp value={progress.processedDialogs}/><small> / {total || '—'}</small></strong>
+        <strong className="tabular">{progress.processedDialogs.toLocaleString('ru-RU')}<small> / {total || '—'}</small></strong>
       </div>
       <div><span>ТВОИХ СООБЩЕНИЙ</span>
-        <strong className="tabular"><CountUp value={progress.outgoingFound}/></strong>
+        <strong className="tabular">{progress.outgoingFound.toLocaleString('ru-RU')}</strong>
       </div>
     </div>
 
