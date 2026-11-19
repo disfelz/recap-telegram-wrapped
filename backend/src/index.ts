@@ -235,7 +235,7 @@ export default {
         }
         return jsonResponse({
           authorized, availableYears: (recaps.results || []).map((r) => r.year),
-          timezone: settings?.timezone || 'Europe/Moscow',
+          timezone: settings?.timezone || null,
           hideChatNames: settings?.hide_chat_names !== 0,
           activeJob: recentJob ? {
             jobId: recentJob.id, year: recentJob.year, status: recentJob.status,

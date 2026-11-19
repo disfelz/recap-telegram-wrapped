@@ -86,10 +86,11 @@ export const SettingsScreen:React.FC<Props>=({
         <p><span>04</span> Статистика хранится в Cloudflare D1 до удаления.</p>
       </div>
     </section>
-    <button type="button" className="flagship-delete-trigger" onClick={()=>{haptic('medium');setConfirmDelete(true);setError('');}}>
+    {!demoMode&&<button type="button" className="flagship-delete-trigger" onClick={()=>{haptic('medium');setConfirmDelete(true);setError('');}}>
       <Trash2 size={17}/> Отключить аккаунт и удалить все данные <span>↗</span>
-    </button>
-    <p className="flagship-settings-footnote">Это действие необратимо. Повторный анализ потребует нового подключения.</p>
+    </button>}
+    {demoMode?<p className="flagship-settings-footnote">В демо нет твоих данных. Отключи демо, чтобы управлять реальным аккаунтом.</p>:
+    <p className="flagship-settings-footnote">Это действие необратимо. Повторный анализ потребует нового подключения.</p>}
     <AnimatePresence>
       {confirmDelete&&<motion.div className="flagship-modal-backdrop" role="presentation"
         initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}

@@ -226,10 +226,18 @@ export default function App(){
         try{
           await recapApi.cancelScan(progress.jobId);
           clearPoll();
-          setScreen(Object.keys(recaps).length?'analytics':'connect');
+          setScreen('analytics');
         }catch(e){setError((e as Error).message);}
       }}
-      onRetry={()=>void startScan(progress.year)}
+      onRetry={async()=>{
+        setError(null);
+        try {
+          const result=await recapApi.resumeScan(progress.jobId);
+          setProgress({...initialProgress(progress.year),jobId:result.jobId || progress.jobId});
+          setScreen('scan');
+          startPolling(result.jobId || progress.jobId);
+        }catch(e){setError((e as Error).message || 'Не удалось продолжить анализ');}
+      }}
       onOpenResults={()=>{setSelectedYear(progress.year);setScreen('hold');}}
     />}
     {screen==='hold'&&stats&&<HoldScreen key={selectedYear+(demoMode?'-demo':'-live')}

@@ -49,8 +49,9 @@ export const HoldScreen:React.FC<Props>=({year,onReveal,partial})=>{
   const complete=useCallback(()=>{
     if(called.current)return;
     called.current=true; cancelAnimationFrame(raf.current);
-    setProgress(100);setFinished(true);haptic('success');
-  },[]);
+    setProgress(100);haptic('success');
+    if(reduce)callback.current();else setFinished(true);
+  },[reduce]);
   const animate=useCallback((now:number)=>{
     const pct=Math.min(100,Math.round((now-started.current)/2200*100));
     setProgress(pct);

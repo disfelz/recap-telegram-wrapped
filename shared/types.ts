@@ -81,7 +81,7 @@ export interface RecapMe {
   authorized: boolean;
   activeJob: ScanProgressPayload | null;
   availableYears: number[];
-  timezone: string;
+  timezone: string | null;
   hideChatNames: boolean;
 }
 

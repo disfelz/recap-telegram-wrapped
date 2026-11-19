@@ -22,13 +22,14 @@ interface Props {
   stats:RecapStats; hideChatNames:boolean; onToggleHideNames:()=>void; onClose:()=>void;
 }
 function Art({index,stats}:{index:number;stats:RecapStats}) {
+  const reduce=useReducedMotion();
   const month=stats.byMonth.indexOf(Math.max(...stats.byMonth));
   const day=stats.byWeekday.indexOf(Math.max(...stats.byWeekday));
   const maxMonth=Math.max(1,...stats.byMonth);
   const peak=stats.byHour.indexOf(Math.max(...stats.byHour));
   const nighttime=peak>=21||peak<6;
   if(index===0)return <div className="v2-art v2-art-plane">
-    <motion.div className="v2-plane" animate={{x:[-16,14,-16],y:[12,-16,12],rotate:[-8,8,-8]}}
+    <motion.div className="v2-plane" animate={reduce?{}:{x:[-16,14,-16],y:[12,-16,12],rotate:[-8,8,-8]}}
       transition={{duration:5,repeat:Infinity,ease:'easeInOut'}}>
       <svg viewBox="0 0 220 160"><path d="M12 83L207 10L134 153L105 103L12 83Z" fill="#FFF" opacity=".98"/>
         <path d="M105 103L207 10L87 120L105 103Z" fill="#A1C7FF"/>
@@ -37,19 +38,19 @@ function Art({index,stats}:{index:number;stats:RecapStats}) {
   </div>;
   if(index===1)return <div className="v2-art v2-art-months"><div className="v2-bars">
     {stats.byMonth.map((v,i)=><div key={i} className={i===month?'peak':''}>
-      <motion.span initial={{scaleY:0}} animate={{scaleY:1}} transition={{duration:.65,delay:i*.045}}
+      <motion.span initial={reduce?false:{scaleY:0}} animate={{scaleY:1}} transition={{duration:.65,delay:i*.045}}
         style={{height:Math.max(5,(v/maxMonth)*100)+'%',transformOrigin:'bottom'}}/>
       <small>{i+1}</small></div>)}
   </div></div>;
   if(index===2)return <div className="v2-art v2-art-week">
     {stats.byWeekday.map((v,i)=><motion.div key={i} className={day===i?'peak':''}
-      initial={{opacity:0,scale:.65}} animate={{opacity:1,scale:1}}
+      initial={reduce?false:{opacity:0,scale:.65}} animate={{opacity:1,scale:1}}
       transition={{type:'spring',delay:.05*i}}>
       <span>{SHORT[i]}</span><b>{v.toLocaleString('ru-RU')}</b>
     </motion.div>)}
   </div>;
   if(index===3)return <div className="v2-art v2-art-moon">
-    <motion.div animate={{rotate:360}} transition={{duration:36,repeat:Infinity,ease:'linear'}}
+    <motion.div animate={reduce?{}:{rotate:360}} transition={{duration:36,repeat:Infinity,ease:'linear'}}
       className="v2-moon-halo"/>
     <div className={nighttime?'v2-moon-disc night':'v2-moon-disc day'}>
       {nighttime?<Moon size={115} strokeWidth={.8}/>:<span>☀</span>}
@@ -58,37 +59,37 @@ function Art({index,stats}:{index:number;stats:RecapStats}) {
   </div>;
   if(index===4)return <div className="v2-art v2-art-audio"><div className="v2-wave">
     {Array.from({length:29},(_,i)=><motion.span key={i}
-      animate={{scaleY:[.4,1,.5,.9,.4]}}
+      animate={reduce?{}:{scaleY:[.4,1,.5,.9,.4]}}
       transition={{duration:1.5+i%6*.14,repeat:Infinity,delay:i*.055,ease:'easeInOut'}}
       style={{height:(15+Math.abs(Math.sin(i*.78))*110)+'px'}}/>)}
   </div><Mic size={48} strokeWidth={1.3}/></div>;
   if(index===5)return <div className="v2-art v2-art-round">
-    <motion.div className="v2-round-outer" animate={{rotate:360}}
+    <motion.div className="v2-round-outer" animate={reduce?{}:{rotate:360}}
       transition={{repeat:Infinity,duration:24,ease:'linear'}}/>
     <div className="v2-round-inner"><Video size={81} strokeWidth={1.3}/></div>
   </div>;
   if(index===6)return <div className="v2-art v2-art-media">
-    <motion.div animate={{rotate:[-14,-9,-14],y:[0,-12,0]}}
+    <motion.div animate={reduce?{}:{rotate:[-14,-9,-14],y:[0,-12,0]}}
       transition={{duration:4,repeat:Infinity}}><ImageIcon size={88}/></motion.div>
-    <motion.div animate={{rotate:[12,18,12],y:[0,12,0]}}
+    <motion.div animate={reduce?{}:{rotate:[12,18,12],y:[0,12,0]}}
       transition={{duration:3.5,repeat:Infinity}}><Video size={66}/></motion.div>
-    <motion.div animate={{scale:[1,1.09,1]}} transition={{duration:3,repeat:Infinity}}>GIF</motion.div>
+    <motion.div animate={reduce?{}:{scale:[1,1.09,1]}} transition={{duration:3,repeat:Infinity}}>GIF</motion.div>
   </div>;
   if(index===7)return <div className="v2-art v2-art-chat">
-    <motion.div animate={{y:[-7,7,-7]}} transition={{duration:4,repeat:Infinity}}><MessageCircle size={112} strokeWidth={1.15}/></motion.div>
-    <motion.div animate={{y:[7,-7,7]}} transition={{duration:5,repeat:Infinity}}><Send size={84} strokeWidth={1.15}/></motion.div>
+    <motion.div animate={reduce?{}:{y:[-7,7,-7]}} transition={{duration:4,repeat:Infinity}}><MessageCircle size={112} strokeWidth={1.15}/></motion.div>
+    <motion.div animate={reduce?{}:{y:[7,-7,7]}} transition={{duration:5,repeat:Infinity}}><Send size={84} strokeWidth={1.15}/></motion.div>
   </div>;
   if(index===8)return <div className="v2-art v2-art-flame">
-    <motion.div animate={{scale:[.95,1.08,.95],rotate:[-4,4,-4]}}
+    <motion.div animate={reduce?{}:{scale:[.95,1.08,.95],rotate:[-4,4,-4]}}
       transition={{duration:1.8,repeat:Infinity,ease:'easeInOut'}}><Flame size={190} strokeWidth={1.05}/></motion.div>
   </div>;
   if(index===9)return <div className="v2-art v2-art-persona">
-    <motion.div animate={{rotate:[-6,6,-6],scale:[.95,1.04,.95]}}
+    <motion.div animate={reduce?{}:{rotate:[-6,6,-6],scale:[.95,1.04,.95]}}
       transition={{duration:6,repeat:Infinity}}><Sparkles size={143} strokeWidth={.9}/></motion.div>
     <div className="v2-persona-pills">{stats.persona.traits.slice(0,3).map((trait,i)=><span key={i}>{trait}</span>)}</div>
   </div>;
   return <div className="v2-art v2-art-finale">
-    <motion.div className="v2-finale-card" initial={{rotateY:80,opacity:0}}
+    <motion.div className="v2-finale-card" initial={reduce?false:{rotateY:80,opacity:0}}
       animate={{rotateY:0,opacity:1}} transition={{duration:1.1,type:'spring'}}>
       <small>RECAP / {stats.year}</small><b>{fmt(stats.totalMessages)}</b>
       <span>ТВОИХ СООБЩЕНИЙ</span>
@@ -116,7 +117,7 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
     {title:maxHour?'Твоё любимое время':'Пикового часа пока нет',sub:maxHour?'Чаще всего ты писал с '+String(peakHour).padStart(2,'0')+':00 до '+String((peakHour+1)%24).padStart(2,'0')+':00.':'Отправленных сообщений пока нет.',number:maxHour,label:'сообщений в этот час'},
     {title:stats.voiceCount?'Живой голос':'Голосовые? Пока нет',sub:voiceDuration===null?'Считаем голосовые, без прослушивания.':'По метаданным: '+fmt(voiceDuration)+' мин.',number:stats.voiceCount,label:'голосовых'},
     {title:stats.videoNoteCount?'Кружок за кружком':'Без кружочков',sub:'Видеоcообщения, которые ты отправлял.',number:stats.videoNoteCount,label:'кружков'},
-    {title:'И не только текст',sub:'Фото, видео, стикеры и GIF — всё по метаданным.',number:stats.photoCount+stats.videoCount+stats.stickerAndGifCount,label:'медиа и реакций-стикеров'},
+    {title:'И не только текст',sub:'Фото, видео, стикеры и GIF — всё по метаданным.',number:stats.photoCount+stats.videoCount+stats.stickerAndGifCount,label:'медиафайлов и стикеров'},
     {title:'Главные переписки',sub:'Рейтинг только по твоим отправленным сообщениям.',number:(topPrivate?.sentMessages||0),label:'сообщений в самом активном личном чате'},
     {title:stats.longestStreakDays?'Без пауз!':'Без длинных серий',sub:stats.longestStreakRange?stats.longestStreakRange.start+' — '+stats.longestStreakRange.end:'Серия считается по дням с исходящими сообщениями.',number:stats.longestStreakDays,label:'дней подряд'},
     {title:'Твой вайб года',sub:stats.persona.subtitle,number:stats.activeDays,label:'дней с сообщениями'},
