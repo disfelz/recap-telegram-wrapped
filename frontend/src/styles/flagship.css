@@ -219,3 +219,10 @@ body{background:#09090f}
  .flagship-story-progress{animation:none!important;transform:scaleX(1)!important}
  .ambient-bg .ambient-orb{transition:none!important}
 }
+
+/* Interactive weekday bars are native buttons for keyboard and screen readers. */
+.ref-weekday{width:100%;border:0;background:transparent;padding:4px 2px;text-align:left;cursor:pointer;border-radius:8px}
+.ref-weekday:hover,.ref-weekday.ref-selected-weekday{background:rgba(169,150,255,.06)}
+.ref-weekday.ref-selected-weekday>span:first-child,.ref-weekday.ref-selected-weekday>small{color:#f4f0ff}
+.ref-weekday:focus-visible{outline:2px solid #a996ff;outline-offset:2px}
+.flagship-screen-heading button:focus-visible,.flagship-year-list button:focus-visible,.flagship-auth-tabs button:focus-visible,.flagship-delete-trigger:focus-visible,.flagship-demo-link:focus-visible{outline:2px solid #85b8ff;outline-offset:3px}
