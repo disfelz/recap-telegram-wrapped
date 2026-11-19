@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
-RUN useradd -m scanner && mkdir -p /tmp/recap_checkpoints && chown -R scanner:scanner /tmp/recap_checkpoints
+RUN useradd -m scanner && mkdir -p /data/recap_checkpoints /data/recap_sessions && chown -R scanner:scanner /data && chmod 700 /data/recap_sessions
+VOLUME /data
 USER scanner
 
 EXPOSE 10000
