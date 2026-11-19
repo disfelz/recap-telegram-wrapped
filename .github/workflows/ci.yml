@@ -27,8 +27,8 @@ jobs:
           cache-dependency-path: scanner/requirements.txt
       - name: Install scanner dependencies
         run: python -m pip install -r scanner/requirements.txt pytest
-      - name: Test 12 scanner scenarios
-        run: PYTHONPATH=. python -m pytest tests/test_analyzer.py tests/test_session_store.py -v
+      - name: Test scanner regression scenarios
+        run: PYTHONPATH=. python -m pytest tests/test_analyzer.py tests/test_session_store.py tests/test_auth_errors.py -v
       - name: Compile Python files
         run: python -m compileall -q scanner
 
@@ -48,6 +48,9 @@ jobs:
         env:
           VITE_ENABLE_DEMO: 'false'
         run: npm run build
+      - name: Regression tests for Russian endings and phone normalization
+        working-directory: frontend
+        run: node scripts/test-helpers.mjs
 
   backend-typecheck:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
