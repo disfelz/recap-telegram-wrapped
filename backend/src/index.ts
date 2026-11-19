@@ -248,6 +248,32 @@ export default {
         }, 200, corsOrigin);
       }
 
+      if (url.pathname === '/api/chats/names' && request.method === 'GET') {
+        const year = Number(url.searchParams.get('year'));
+        if (!Number.isInteger(year) || year < 2013 || year > new Date().getUTCFullYear()) {
+          return jsonResponse({ error: 'Invalid year' }, 400, corsOrigin);
+        }
+        const recap = await env.DB.prepare(
+          'SELECT stats_json FROM recap_results WHERE telegram_user_id = ? AND year = ?'
+        ).bind(user.id, year).first<{ stats_json: string }>();
+        if (!recap) return jsonResponse({ error: 'Нет статистики за этот год' }, 404, corsOrigin);
+        const stats = JSON.parse(recap.stats_json) as {
+          topPrivateChats: Array<{chatHash:string}>;
+          topGroupChats: Array<{chatHash:string}>;
+        };
+        const hashes = [...new Set([
+          ...(stats.topPrivateChats || []).map(c => c.chatHash),
+          ...(stats.topGroupChats || []).map(c => c.chatHash),
+        ])].filter(h => /^[0-9a-f]{16}$/.test(h)).slice(0,20);
+        try {
+          return await proxyToScanner(env, '/internal/chats/resolve', 'POST', {
+            telegram_user_id: user.id, chat_hashes: hashes,
+          });
+        } catch {
+          return jsonResponse({ error: 'Не удалось получить названия переписок' }, 503, corsOrigin);
+        }
+      }
+
       if (url.pathname === '/api/auth/contact/pickup' && request.method === 'GET') {
         const contact = await env.DB.prepare(
           'SELECT phone FROM phone_contact_requests WHERE telegram_user_id = ? AND expires_at > ?'

@@ -23,6 +23,7 @@ const post = <T,>(path: string, data: object) =>
 export const recapApi = {
   getMe: () => apiFetch<RecapMe>('/api/me'),
   getSavedRecaps: () => apiFetch<{results: RecapStats[]}>('/api/recap'),
+  getChatNames: (year: number) => apiFetch<{names: Record<string,string>}>('/api/chats/names?year='+year),
   pickupPhoneContact: () => apiFetch<{phone: string|null}>('/api/auth/contact/pickup'),
   startQrAuth: (consentAccepted: boolean) =>
     post<{authId: string;qrUrl: string;expiresAt: string}>('/api/auth/qr/start', {consentAccepted}),

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import re
 from typing import Dict, Optional
 
 import httpx
@@ -67,6 +69,42 @@ class ScanCancelReq(BaseModel):
 @app.get("/health")
 async def health() -> dict:
     return {"ok": True}
+
+
+class ResolveNamesReq(BaseModel):
+    telegram_user_id: int
+    chat_hashes: list[str]
+
+
+@app.post("/internal/chats/resolve", dependencies=[Depends(verify_internal_token)])
+async def resolve_chat_names(req: ResolveNamesReq) -> dict:
+    """Opt-in, transient labels. Never persist names to D1 or checkpoints."""
+    wanted = set(req.chat_hashes)
+    if len(wanted) > 20 or any(not re.fullmatch(r"[0-9a-f]{16}", key) for key in wanted):
+        raise HTTPException(status_code=422, detail="Invalid chat references")
+    if not wanted:
+        return {"names": {}}
+    try:
+        client = auth_manager.build_client_for_scan(req.telegram_user_id)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Telegram session unavailable")
+    result: dict[str, str] = {}
+    await client.connect()
+    try:
+        me = await client.get_me()
+        if not me or me.id != req.telegram_user_id:
+            raise HTTPException(status_code=403, detail="Telegram session mismatch")
+        async for dialog in client.iter_dialogs():
+            digest = hashlib.sha256(
+                f"{req.telegram_user_id}:{dialog.id}".encode("utf-8")
+            ).hexdigest()[:16]
+            if digest in wanted:
+                result[digest] = str(dialog.name or "Переписка")[:80]
+                if len(result) == len(wanted):
+                    break
+    finally:
+        await client.disconnect()
+    return {"names": result}
 
 
 @app.post("/internal/auth/qr/start", dependencies=[Depends(verify_internal_token)])

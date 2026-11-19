@@ -179,7 +179,24 @@ export default function App(){
   const toggleHideNames=()=>{
     const value=!hideChatNames;
     setHideChatNames(value);
-    if(!demoMode)void recapApi.updateSettings(timezone,value).catch(e=>setError((e as Error).message));
+    if(!demoMode){
+      void recapApi.updateSettings(timezone,value).catch(e=>setError((e as Error).message));
+      if(!value){
+        // Only resolve real chat names on an explicit reveal gesture.
+        // Names live in memory and never in saved RecapStats / PNG exports.
+        void recapApi.getChatNames(selectedYear).then(({names})=>{
+          setRecaps(prev=>{
+            const item=prev[selectedYear];
+            if(!item)return prev;
+            const withName=(list:typeof item.topPrivateChats)=>
+              list.map(chat=>({...chat,displayLabel:names[chat.chatHash]||chat.displayLabel}));
+            return {...prev,[selectedYear]:{...item,
+              topPrivateChats:withName(item.topPrivateChats),
+              topGroupChats:withName(item.topGroupChats)}};
+          });
+        }).catch(e=>setError((e as Error).message));
+      }
+    }
   };
   const handleYearChange=(year:number)=>{
     setSelectedYear(year);
