@@ -172,8 +172,8 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
                 <div style={{height:156,display:'grid',gridTemplateColumns:'repeat(12,minmax(0,1fr))',alignItems:'end',gap:5}}>
                   {stats.byMonth.map((v,i)=>(
                     <div key={i} style={{height:'100%',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',gap:7,minWidth:0}}>
-                      <motion.div initial={{height:0}} animate={{height:Math.max(4,v/maxMonthVal*122)}} transition={{duration:.4,delay:i*.025}}
-                        style={{width:'100%',borderRadius:5,
+                      <motion.div initial={reduceMotion?false:{scaleY:0}} animate={{scaleY:1}} transition={{duration:.4,delay:i*.025}}
+                        style={{width:'100%',height:Math.max(4,v/maxMonthVal*122),transformOrigin:'bottom',borderRadius:5,
                           background:i===peakMonthIdx?'linear-gradient(#a996ff,#85b8ff)':'#353241'}}/>
                       <span style={{fontSize:9,color:i===peakMonthIdx?'#fff':'#838096'}}>{MONTHS_SHORT[i]}</span>
                     </div>
@@ -284,11 +284,16 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 56 }}>
               {Array.from({ length: 28 }).map((_, idx) => (
-                <div
+                <motion.div
                   key={idx}
+                  aria-hidden="true"
+                  initial={false}
+                  animate={reduceMotion?{}:{scaleY:[.75,1.22,.48,1]}}
+                  transition={{duration:1.5+idx%4*.16,repeat:Infinity,ease:'easeInOut',delay:idx*.045}}
                   style={{
                     flex: 1,
                     height: `${18 + ((idx * 17) % 38)}px`,
+                    transformOrigin:'center',
                     borderRadius: 99,
                     background: idx % 3 === 0 ? '#A996FF' : 'rgba(133,184,255,0.4)',
                   }}
