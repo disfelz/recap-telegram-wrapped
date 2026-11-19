@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, KeyRound, Lock, QrCode, ShieldCheck, Smartphone, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Github, KeyRound, Lock, QrCode, ShieldCheck, Smartphone, X } from 'lucide-react';
 import { recapApi } from '../api/client';
 import { QrMatrix } from '../components/QrMatrix';
-import { haptic, requestOwnContact } from '../utils/telegram';
+import { haptic, requestOwnContact, openExternalLink } from '../utils/telegram';
 import { normalizePhoneNumber } from '../utils/phone';
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
   onShowDemo?:()=>void;
 }
 type Step='phone'|'code'|'password';
+const GITHUB_REPO_URL = import.meta.env.VITE_GITHUB_REPO_URL || '';
 const sleep=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
 export const ConnectScreen:React.FC<Props>=({
   selectedYear,availableYears,onSelectYear,onAuthorized,onShowDemo
@@ -192,6 +193,9 @@ export const ConnectScreen:React.FC<Props>=({
         <button type="button" key={year} className={year===selectedYear?'active':''}
           onClick={()=>{onSelectYear(year);haptic('selection');}}>{year}</button>)}</div>
     </header>
+    <div className="v2-login-steps" aria-label="Три шага RECAP">
+      <span><b>1</b> Вход</span><ArrowRight size={14}/><span><b>2</b> Подсчёт</span><ArrowRight size={14}/><span><b>3</b> Автовыход</span>
+    </div>
     <section className="v2-connect-body">
       <div className="v2-connect-symbol"><Smartphone size={38}/></div>
       <div className="v2-connect-title">
@@ -205,6 +209,10 @@ export const ConnectScreen:React.FC<Props>=({
           onClick={()=>void sharePhone()}>
           <Smartphone size={20}/>{contactBusy?'Получаем номер…':'Поделиться номером'}<ArrowRight size={19}/>
         </button>
+        {GITHUB_REPO_URL&&<button type="button" className="v2-source-link"
+          onClick={()=>openExternalLink(GITHUB_REPO_URL)}>
+          <Github size={16}/> Открытый исходный код на GitHub
+        </button>}
         <span className="v2-or">или введи вручную</span>
         <form onSubmit={e=>{e.preventDefault();void beginPhone(phone);}}>
           <input className="v2-input" type="tel" inputMode="tel" autoComplete="tel"
@@ -216,7 +224,7 @@ export const ConnectScreen:React.FC<Props>=({
         </form>
         <label key={consentAttempt} ref={consentRef} className={'v2-agree'+(!consent&&consentAttempt>0?' v2-agree-attention':'')}><input type="checkbox" checked={consent}
           onChange={e=>{setConsent(e.target.checked);if(e.target.checked){setConsentAttempt(0);setError('');}}}/>
-          <span>Я понимаю, что MTProto имеет доступ к аккаунту, и согласен на анализ.</span>
+          <span>Я понимаю, что временный MTProto-сеанс технически имеет широкие права аккаунта. Согласен на подсчёт и автоматический выход.</span>
         </label>
         <button type="button" className="v2-privacy-link" onClick={()=>setSecurityOpen(true)}>
           <ShieldCheck size={15}/> Как это безопасно?
@@ -270,7 +278,8 @@ export const ConnectScreen:React.FC<Props>=({
           <h2>По-честному о доступе</h2>
           <p><Lock size={18}/> MTProto не умеет «только читать». Такая сессия имеет широкие права аккаунта.</p>
           <p><ShieldCheck size={18}/> Мы считаем метаданные отправленных сообщений. Тексты не сохраняем, медиа не скачиваем.</p>
-          <p><Check size={18}/> Сессия шифруется и остаётся для обновлений. Отключить и удалить всё можно в настройках или /delete.</p>
+          <p><Check size={18}/> Временная сессия шифруется и используется только для подсчёта (обычно 1–3 минуты, иногда дольше). После результата, отмены или ошибки выполняем Telegram LogOut и удаляем файл.</p>
+          <p><ShieldCheck size={18}/> Если Telegram не подтвердит выход, мы предупредим: проверяй Настройки → Устройства. Во время паузы доступ остаётся активным.</p>
           <button type="button" className="v2-white-btn" onClick={()=>setSecurityOpen(false)}>Понятно</button>
         </motion.div>
       </motion.div>}

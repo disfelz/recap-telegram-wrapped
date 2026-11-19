@@ -3,6 +3,7 @@ type SafeAreaEvent = 'safeAreaChanged' | 'contentSafeAreaChanged' | 'fullscreenC
 
 interface TelegramWebApp {
   initData: string;
+  openLink?: (url:string, options?:{try_instant_view?:boolean}) => void;
   initDataUnsafe?: {user?: {id: number; first_name?: string}};
   ready(): void;
   expand(): void;
@@ -107,4 +108,20 @@ export async function requestOwnContact():Promise<boolean> {
     try { api.requestContact?.(sent => resolve(sent)); }
     catch { resolve(false); }
   });
+}
+
+// Use Telegram's native link opener when supported; keep browsers functional.
+export function openExternalLink(url: string): void {
+  try {
+    const target = new URL(url);
+    if (target.protocol !== 'https:') return;
+    const telegram = getTelegramWebApp();
+    if (telegram?.openLink) {
+      telegram.openLink(target.toString());
+      return;
+    }
+    window.open(target.toString(), '_blank', 'noopener,noreferrer');
+  } catch {
+    // Invalid or unsupported URL — do not navigate.
+  }
 }

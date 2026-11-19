@@ -234,7 +234,7 @@ export default function App(){
       selectedYear={selectedYear}
       availableYears={availableYears.filter(year=>year===CURRENT_YEAR||year===CURRENT_YEAR-1)}
       onSelectYear={handleYearChange}
-      onStartConnect={()=>{setResumeJobId(null);setScreen('connect');}}
+      onStartConnect={()=>{setResumeJobId(null);if(demoMode)exitDemoToConnect();else setScreen('connect');}}
       hasSavedRecap={Boolean(recaps[selectedYear])}
       onOpenSavedRecap={()=>setScreen('hold')}
       onOpenDemoStories={openDemo}
