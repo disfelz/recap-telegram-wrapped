@@ -44,10 +44,10 @@ export const AnalyticsScreen:React.FC<Props>=({
   const yoy=prevYearStats&&prevYearStats.totalMessages>0?Math.round((stats.totalMessages/prevYearStats.totalMessages-1)*100):null;
   const selectedMonthShare=stats.totalMessages?((stats.byMonth[month]||0)/stats.totalMessages*100).toFixed(1):'0.0';
   const chatCount=stats.metrics.totalEligibleDialogs||stats.metrics.processedDialogs;
-  async function exportPng(format:'story'|'square'){
+  async function exportPng(format:'story'|'square',action:'download'|'share'='download'){
     if(busy)return;
     setBusy(true);setError('');haptic('medium');
-    try{await downloadOrShareCard(stats,format,true);}catch{setError('Не удалось создать PNG. Попробуй ещё раз.');}
+    try{await downloadOrShareCard(stats,format,true,action);}catch{setError('Не удалось создать PNG. Попробуй ещё раз.');}
     finally{setBusy(false);}
   }
   return <main className="screen ref-analytics">
@@ -141,7 +141,7 @@ export const AnalyticsScreen:React.FC<Props>=({
         <button type="button" disabled={busy} onClick={()=>void exportPng('story')}><Download size={14}/> 1080×1920</button>
         <button type="button" disabled={busy} onClick={()=>void exportPng('square')}><Download size={14}/> 1080×1080</button>
         <button type="button" onClick={()=>{haptic('light');onOpenStories();}}><Play size={14}/> Пересмотреть Stories</button>
-        <button type="button" disabled={busy} onClick={()=>void exportPng('story')}><Share2 size={14}/> Поделиться</button>
+        <button type="button" disabled={busy} onClick={()=>void exportPng('story','share')}><Share2 size={14}/> Поделиться</button>
       </div>{error&&<p role="alert" className="ref-error">{error}</p>}
     </section>
   </main>;
