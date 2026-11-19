@@ -89,7 +89,7 @@ export const AnalyticsScreen:React.FC<Props>=({
       {stats.byWeekday.map((v,i)=><button type="button" key={i} className={'ref-weekday '+(weekday===i?'ref-selected-weekday':'')} title={DAYS[i]+': '+fmt(v)} onClick={()=>{setWeekday(i);haptic('selection');}}>
         <span>{DAYS[i]}</span><div className="ref-track"><motion.span className={v===maxDay?'ref-peak':''} initial={reduceMotion?false:{scaleX:0}} animate={{scaleX:1}} transition={{duration:.52,delay:i*.04}} style={{width:v/maxDay*100+'%',transformOrigin:'left'}}/></div>
         <small>{fmt(v)}</small>
-      </div>)}
+      </button>)}
     </div></section>
     <section className="ref-panel">
       <div className="ref-header-row"><h2>Активность по часам (00–23)</h2>
