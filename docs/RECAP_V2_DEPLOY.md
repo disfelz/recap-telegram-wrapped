@@ -40,4 +40,4 @@
 Старые v1-сессии были отозваны: пользователю один раз понадобится новый вход для RECAP v2. Действующие результаты в D1 миграция не удаляет.
 
 ## Исходники
-GitHub → репозиторий disfelz/recap-telegram-wrapped → ветка recap-v2 → Code → Download ZIP. После успешного CI полный исходный ZIP дополнительно появляется в Artifacts workflow.
+GitHub → репозиторий disfelz/recap-telegram-wrapped → ветка recap-v2 → Code → Download ZIP. Готовый ZIP всегда доступен через GitHub → ветка recap-v2 → Code → Download ZIP. Workflow проверяет, что ZIP успешно создаётся и его структура не повреждена; Artifact не загружается, чтобы не требовать квоту GitHub Actions.

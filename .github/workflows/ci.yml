@@ -65,7 +65,7 @@ jobs:
         run: npm run typecheck
 
   source-zip:
-    name: RECAP v2 source ZIP
+    name: Verify source ZIP can be built
     if: github.event_name == 'pull_request'
     needs: [scanner-tests, frontend-build, backend-typecheck]
     runs-on: ubuntu-latest
@@ -74,8 +74,5 @@ jobs:
       - name: Build source ZIP
         run: |
           zip -q -r RECAP-v2-source.zip frontend backend scanner shared tests docs .github README.md CHATGPT_INSTRUCTIONS.md .gitignore -x '*/node_modules/*' '*/__pycache__/*' '*.pyc' '*.env' '*.dev.vars'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: RECAP-v2-source
-          path: RECAP-v2-source.zip
-          retention-days: 30
+      - name: Verify archive integrity
+        run: unzip -t RECAP-v2-source.zip | tail -n 1
