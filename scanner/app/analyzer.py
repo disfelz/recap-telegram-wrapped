@@ -469,15 +469,15 @@ class RecapAnalyzer:
         try:
             await self.progress_cb({
                 "jobId": cp.job_id,
-            "telegramUserId": cp.telegram_user_id,
-            "year": cp.year,
-            "timezone": cp.timezone,
-            "status": status,
-            "stage": stage,
-            "processedDialogs": processed,
-            "totalEligibleDialogs": len(cp.dialogs),
-            "outgoingFound": cp.total_messages,
-            "floodWaitUntil": flood_wait_until,
+                "telegramUserId": cp.telegram_user_id,
+                "year": cp.year,
+                "timezone": cp.timezone,
+                "status": status,
+                "stage": stage,
+                "processedDialogs": processed,
+                "totalEligibleDialogs": len(cp.dialogs),
+                "outgoingFound": cp.total_messages,
+                "floodWaitUntil": flood_wait_until,
             })
         except Exception as exc:
             # A progress-reporting outage must not corrupt the statistics or mark a dialog failed.
