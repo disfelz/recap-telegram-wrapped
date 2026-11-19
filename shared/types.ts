@@ -4,6 +4,7 @@ export type JobStatus =
   | 'quick_preview'
   | 'scanning'
   | 'paused_flood_wait'
+  | 'paused'
   | 'completed'
   | 'partial'
   | 'cancelled'
@@ -86,4 +87,6 @@ export interface ScanProgressPayload {
   outgoingFound: number;
   floodWaitUntil: string | null;
   errorMessage: string | null;
+  /** Server-written heartbeat timestamp, never inferred from client polling. */
+  updatedAt?: string;
 }
