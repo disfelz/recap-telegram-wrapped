@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import './styles/reference.css';
 import './styles/flagship.css';
 import { Home, BarChart3, Sparkles, Settings } from 'lucide-react';
@@ -32,7 +31,6 @@ function readPreference(name: string): string | null {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('welcome');
-  const reduceMotion = useReducedMotion();
   const [demoMode, setDemoMode] = useState<boolean>(DEMO_ALLOWED && !import.meta.env.VITE_API_BASE_URL);
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [timezone, setTimezone] = useState<string>(() => readPreference('timezone') || 'Europe/Moscow');
@@ -294,13 +292,11 @@ export default function App() {
       </div>
 
       {appError && <div role="alert" className="card" style={{margin:16, borderColor:'rgba(255,209,122,.5)', fontSize:13}}>{appError}</div>}
-      <AnimatePresence mode="wait" initial={false}>
-      <motion.div key={screen}
-        style={{ position: 'relative', zIndex: screen === 'settings' ? 60 : screen === 'stories' ? 45 : 1 }}
-        initial={reduceMotion ? { opacity: 0 } : screen === 'stories' ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.985 }}
-        animate={reduceMotion || screen === 'stories' ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
-        exit={reduceMotion || screen === 'stories' ? { opacity: 0 } : { opacity: 0, y: -12, scale: 0.99 }}
-        transition={{ duration: reduceMotion ? 0.01 : 0.26, ease: 'easeOut' }}>
+      {/* Keep the route container mounted. AnimatePresence(mode="wait") can leave
+          Telegram Android WebView with an empty exiting route after fast navigation.
+          Individual screens keep their own animations without holding navigation. */}
+      <div className="route-content"
+        style={{ position: 'relative', zIndex: screen === 'settings' ? 60 : screen === 'stories' ? 45 : 1 }}>
       {screen === 'welcome' && (
         <WelcomeScreen
           selectedYear={selectedYear}
@@ -378,7 +374,7 @@ export default function App() {
         />
       )}
 
-      {!currentStats && !demoMode && (screen === 'stories' || screen === 'analytics') && (
+      {!currentStats && (screen === 'stories' || screen === 'analytics') && (
         <main className="screen ref-analytics recap-empty-analytics" role="status">
           <header className="ref-analytics-head">
             <div><h1>Аналитика</h1><p>Реальные исходящие сообщения</p></div>
@@ -392,10 +388,12 @@ export default function App() {
           <section className="ref-panel recap-empty-panel">
             <span className="ref-overline">RECAP / {selectedYear}</span>
             <h2>Анализа за {selectedYear} год пока нет</h2>
-            <p>Выбери год и запусти сканирование. Покажем только проверенные данные твоего Telegram — без вымышленных цифр.</p>
-            <button type="button" className="btn btn-primary" onClick={beginNewAnalysis}>
+            <p>{demoMode
+              ? 'За этот год нет демонстрационных данных. Выбери другой год или выключи деморежим в настройках.'
+              : 'Выбери год и запусти сканирование. Покажем только проверенные данные твоего Telegram — без вымышленных цифр.'}</p>
+            {!demoMode && <button type="button" className="btn btn-primary" onClick={beginNewAnalysis}>
               Начать анализ за {selectedYear} год
-            </button>
+            </button>}
             {Object.keys(liveRecaps).length > 0 && (
               <button type="button" className="btn btn-secondary" onClick={() => {
                 const lastYear = Math.max(...Object.keys(liveRecaps).map(Number));
@@ -430,8 +428,7 @@ export default function App() {
         />
       )}
 
-      </motion.div>
-      </AnimatePresence>
+      </div>
 
       {screen !== 'stories' && (
         <nav className="bottom-nav">
