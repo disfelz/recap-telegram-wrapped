@@ -443,6 +443,7 @@ class RecapAnalyzer:
         sleep_fn: Callable[[float], Awaitable[None]] = asyncio.sleep,
         progress_cb: Optional[Callable[[dict], Awaitable[None]]] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        resume_event: Optional[asyncio.Event] = None,
         checkpoint_every_n_messages: int = 100,
     ) -> None:
         self.source = source
@@ -451,6 +452,9 @@ class RecapAnalyzer:
         self.sleep_fn = sleep_fn
         self.progress_cb = progress_cb
         self.cancel_event = cancel_event or asyncio.Event()
+        self.resume_event = resume_event if resume_event is not None else asyncio.Event()
+        if resume_event is None:
+            self.resume_event.set()
         self.checkpoint_every = checkpoint_every_n_messages
         self._last_progress_at = 0.0
         self._progress_interval_sec = 5.0
@@ -484,6 +488,26 @@ class RecapAnalyzer:
             # The final completion callback is separately verified and retried by the server.
             logger.warning("Progress delivery failed: error_type=%s", type(exc).__name__)
 
+    async def _wait_if_paused(self, cp: ScanCheckpoint, stage: str) -> None:
+        if self.resume_event.is_set():
+            return
+        # Persist the exact message_id cursor before acknowledging a manual pause.
+        if self.store:
+            self.store.save(cp)
+        await self._emit_progress(cp, "paused_user", stage)
+        while not self.resume_event.is_set():
+            if self.cancel_event.is_set():
+                raise asyncio.CancelledError()
+            try:
+                await asyncio.wait_for(self.resume_event.wait(), timeout=0.5)
+            except asyncio.TimeoutError:
+                pass
+        if self.cancel_event.is_set():
+            raise asyncio.CancelledError()
+        await self._emit_progress(
+            cp, "scanning" if stage == "full_scan" else "quick_preview", stage
+        )
+
     async def _call_with_flood_wait(
         self,
         cp: ScanCheckpoint,
@@ -491,6 +515,7 @@ class RecapAnalyzer:
         coro_factory: Callable[[], Awaitable[Any]],
     ) -> Any:
         while True:
+            await self._wait_if_paused(cp, stage)
             if self.cancel_event.is_set():
                 raise asyncio.CancelledError()
             try:
@@ -580,6 +605,12 @@ class RecapAnalyzer:
         await self._emit_progress(cp, "scanning", "full_scan")
 
         for dialog_id, dcp in cp.dialogs.items():
+            if not self.resume_event.is_set():
+                try:
+                    await self._wait_if_paused(cp, "full_scan")
+                except asyncio.CancelledError:
+                    interrupted = True
+                    break
             if dcp.completed or dcp.failed:
                 continue
             if self.cancel_event.is_set():
@@ -646,6 +677,8 @@ class RecapAnalyzer:
         msgs_since_save = 0
 
         while True:
+            if not self.resume_event.is_set():
+                await self._wait_if_paused(cp, "full_scan")
             if self.cancel_event.is_set():
                 raise asyncio.CancelledError()
 
@@ -689,6 +722,8 @@ class RecapAnalyzer:
             ordered_batch = sorted(raw_batch, key=lambda m: int(m.id), reverse=True)
 
             for msg in ordered_batch:
+                if not self.resume_event.is_set():
+                    await self._wait_if_paused(cp, "full_scan")
                 if self.cancel_event.is_set():
                     raise asyncio.CancelledError()
 
