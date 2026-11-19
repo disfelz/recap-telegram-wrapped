@@ -226,7 +226,10 @@ export default {
         } catch {
           return jsonResponse({ error: 'Не удалось прочитать PNG' }, 400, corsOrigin);
         }
-        const image = form.get('image');
+        // Workers FormData can return string or File depending on runtime/types.
+        // Narrow a user-provided upload structurally, without relying on a
+        // global File constructor that is not consistently declared in Workers.
+        const image: unknown = form.get('image');
         const yearRaw = form.get('year');
         const format = form.get('format');
         const year = typeof yearRaw === 'string' ? Number(yearRaw) : NaN;
@@ -234,7 +237,10 @@ export default {
             (format !== 'story' && format !== 'square')) {
           return jsonResponse({ error: 'Некорректный год или формат открытки' }, 400, corsOrigin);
         }
-        if (!(image instanceof File) || image.size === 0 || image.size > maxPngSize) {
+        if (!image || typeof image !== 'object' ||
+            !('size' in image) || typeof image.size !== 'number' ||
+            !('arrayBuffer' in image) || typeof image.arrayBuffer !== 'function' ||
+            image.size === 0 || image.size > maxPngSize) {
           return jsonResponse({ error: 'Нужен PNG размером до 5 МБ' }, 413, corsOrigin);
         }
         const bytes = new Uint8Array(await image.arrayBuffer());
