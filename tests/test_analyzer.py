@@ -445,3 +445,56 @@ async def test_14_checkpoint_excludes_real_chat_titles(tmp_path: Path):
     contents = (tmp_path / 'privacy.json').read_text(encoding='utf8')
     assert sensitive not in contents
     assert sensitive not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_manual_pause_saves_cursor_and_resumes_without_duplicates(tmp_path: Path):
+    """Manual pause stops reading within a page, persists the cursor, and resumes exactly."""
+    my_id = 100
+    peer = 219
+    begin = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    messages = [
+        FakeMessage(i, begin + timedelta(minutes=i), True, my_id)
+        for i in range(1, 81)
+    ]
+    source = FakeTelegramSource(
+        my_id, [make_dialog(peer, last_dt=messages[-1].date)], {peer: messages}
+    )
+    resume_event = asyncio.Event()
+    resume_event.set()
+    pause_announced = asyncio.Event()
+    updates: list[str] = []
+    scanned = 0
+
+    async def progress_callback(payload: dict) -> None:
+        updates.append(payload["status"])
+        if payload["status"] == "paused_user":
+            pause_announced.set()
+
+    def trigger_pause(_did: int, _mid: int) -> None:
+        nonlocal scanned
+        scanned += 1
+        if scanned == 15:
+            resume_event.clear()
+
+    store = CheckpointStore(str(tmp_path))
+    analyzer = RecapAnalyzer(
+        source, store, resume_event=resume_event, progress_cb=progress_callback,
+        checkpoint_every_n_messages=10,
+    )
+    task = asyncio.create_task(analyzer.run(
+        job_id="manual_pause", year=2026, timezone_name="UTC",
+        on_after_message=trigger_pause,
+    ))
+    await asyncio.wait_for(pause_announced.wait(), timeout=3)
+    assert not task.done()
+    checkpoint = store.load("manual_pause")
+    assert checkpoint is not None
+    assert checkpoint.total_messages == 15
+    await asyncio.sleep(0.05)
+    assert not task.done()
+    resume_event.set()
+    result = await asyncio.wait_for(task, timeout=3)
+    assert result["completionStatus"] == "completed"
+    assert result["totalMessages"] == 80
+    assert "paused_user" in updates
