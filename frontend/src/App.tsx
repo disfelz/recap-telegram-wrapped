@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import './styles/reference.css';
 import { Home, BarChart3, Sparkles, Settings } from 'lucide-react';
 import type { RecapStats, ScanProgressPayload } from '../../shared/types';
 import { recapApi } from './api/client';
@@ -286,6 +287,7 @@ export default function App() {
           availableYears={availableYears}
           selectedYear={selectedYear}
           hideChatNames={hideChatNames}
+          onToggleHideNames={() => { setHideChatNames((v) => !v); }}
           onSelectYear={setSelectedYear}
           onOpenStories={() => openResults('stories')}
         />
