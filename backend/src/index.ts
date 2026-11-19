@@ -107,7 +107,7 @@ export default {
           expected.year !== payload.year || expected.timezone !== payload.timezone) {
         return jsonResponse({ error: 'Unknown or mismatched job' }, 409, corsOrigin);
       }
-      if (['cancelled', 'completed', 'failed', 'partial'].includes(expected.status)) {
+      if (['paused', 'cancelled', 'completed', 'failed', 'partial'].includes(expected.status)) {
         return jsonResponse({ ok: true, ignored: true }, 200, corsOrigin);
       }
       const now = new Date().toISOString();
@@ -115,7 +115,7 @@ export default {
         `UPDATE scan_jobs
          SET status = ?, stage = ?, processed_dialogs = ?, total_eligible_dialogs = ?,
              outgoing_found = ?, flood_wait_until = ?, error_message = ?, updated_at = ?
-         WHERE id = ? AND telegram_user_id = ? AND status NOT IN ('cancelled', 'completed', 'failed', 'partial')`
+         WHERE id = ? AND telegram_user_id = ? AND status NOT IN ('paused', 'cancelled', 'completed', 'failed', 'partial')`
       )
         .bind(
           payload.status,
@@ -317,7 +317,7 @@ export default {
         const previous = await env.DB.prepare(
           `SELECT year, timezone, status FROM scan_jobs WHERE id = ? AND telegram_user_id = ?`
         ).bind(body.jobId, user.id).first<{year:number; timezone:string; status:string}>();
-        if (!previous || !['cancelled', 'partial', 'failed'].includes(previous.status)) {
+        if (!previous || !['paused', 'cancelled', 'partial', 'failed'].includes(previous.status)) {
           return jsonResponse({ error: 'Это задание нельзя возобновить' }, 409, corsOrigin);
         }
         try {
@@ -375,7 +375,42 @@ export default {
           outgoingFound: row.outgoing_found,
           floodWaitUntil: row.flood_wait_until,
           errorMessage: row.error_message,
+          updatedAt: row.updated_at,
         } }, 200, corsOrigin);
+      }
+
+      if (url.pathname === '/api/scan/pause' && request.method === 'POST') {
+        const body = (await request.json()) as { jobId?: string };
+        if (!body.jobId) return jsonResponse({ error: 'Задание не указано' }, 400, corsOrigin);
+        const row = await env.DB.prepare(
+          'SELECT status FROM scan_jobs WHERE id = ? AND telegram_user_id = ?'
+        ).bind(body.jobId, user.id).first<{ status: string }>();
+        if (!row) return jsonResponse({ error: 'Задание не найдено' }, 404, corsOrigin);
+        if (!['queued', 'quick_preview', 'auth_pending', 'scanning', 'paused_flood_wait'].includes(row.status)) {
+          return jsonResponse({ error: 'Этот анализ нельзя приостановить' }, 409, corsOrigin);
+        }
+        // Mark paused before signalling the scanner. An in-flight final callback
+        // must not race us into marking a deliberately paused job as cancelled.
+        const changed = await env.DB.prepare(
+          'UPDATE scan_jobs SET status = ?, flood_wait_until = NULL, updated_at = ? WHERE id = ? AND telegram_user_id = ? AND status = ?'
+        ).bind('paused', new Date().toISOString(), body.jobId, user.id, row.status).run();
+        if (!changed.meta.changes) return jsonResponse({ error: 'Статус анализа уже изменился' }, 409, corsOrigin);
+        try {
+          const response = await proxyToScanner(env, '/internal/scan/cancel', 'POST', {
+            job_id: body.jobId,
+            telegram_user_id: user.id,
+          });
+          if (!response.ok) throw new Error('Scanner pause rejected');
+          const result = await response.json() as { cancelled?: boolean };
+          if (!result.cancelled) throw new Error('Scanner job no longer active');
+          return jsonResponse({ paused: true }, 200, corsOrigin);
+        } catch {
+          // A pause is only confirmed after the scanner accepted the stop.
+          await env.DB.prepare(
+            'UPDATE scan_jobs SET status = ?, updated_at = ? WHERE id = ? AND telegram_user_id = ? AND status = ?'
+          ).bind(row.status, new Date().toISOString(), body.jobId, user.id, 'paused').run();
+          return jsonResponse({ error: 'Не удалось поставить анализ на паузу' }, 503, corsOrigin);
+        }
       }
 
       if (url.pathname === '/api/scan/cancel' && request.method === 'POST') {
