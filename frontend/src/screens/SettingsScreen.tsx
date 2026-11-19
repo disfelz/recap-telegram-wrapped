@@ -82,12 +82,12 @@ export const SettingsScreen:React.FC<Props>=({
       <div className="flagship-security-facts">
         <p><span>01</span> Анализируются только твои отправленные сообщения и метаданные.</p>
         <p><span>02</span> Тексты переписок и медиафайлы не сохраняются в RECAP.</p>
-        <p><span>03</span> MTProto-сессия шифруется и завершается через LogOut после анализа или отмены. Сам MTProto не ограничен правами «только чтение».</p>
+        <p><span>03</span> MTProto-сессия шифруется AES-256-GCM и остаётся для обновлений без повторного входа. У MTProto нет режима «только чтение»: сессия имеет широкие права. LogOut выполняется только после явного отключения.</p>
         <p><span>04</span> Статистика хранится в Cloudflare D1 до удаления.</p>
       </div>
     </section>
     <button type="button" className="flagship-delete-trigger" onClick={()=>{haptic('medium');setConfirmDelete(true);setError('');}}>
-      <Trash2 size={17}/> Удалить все данные <span>↗</span>
+      <Trash2 size={17}/> Отключить аккаунт и удалить все данные <span>↗</span>
     </button>
     <p className="flagship-settings-footnote">Это действие необратимо. Повторный анализ потребует нового подключения.</p>
     <AnimatePresence>
@@ -102,7 +102,7 @@ export const SettingsScreen:React.FC<Props>=({
           <div className="flagship-modal-icon"><AlertTriangle size={25}/></div>
           <span className="flagship-eyebrow">НЕОБРАТИМОЕ ДЕЙСТВИЕ</span>
           <h2 id="flagship-confirm-title">Удалить свою историю из RECAP?</h2>
-          <p>Сохранённые результаты и настройки будут удалены. Если есть активное сканирование, его сессия будет завершена. Это не удаляет сообщения из Telegram.</p>
+          <p>Сохранённые результаты и настройки будут удалены. Если идёт анализ, он будет остановлен. RECAP выполнит Telegram LogOut для сохранённой сессии. Это не удаляет сообщения из Telegram.</p>
           {error&&<div className="flagship-inline-error" role="alert">{error}</div>}
           <div className="flagship-modal-actions">
             <button type="button" className="btn btn-secondary" disabled={deleting} onClick={()=>setConfirmDelete(false)}>Оставить</button>
