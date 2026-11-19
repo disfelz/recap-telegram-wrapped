@@ -48,6 +48,7 @@ export default function App() {
   const [appError, setAppError] = useState<string | null>(null);
   const scanPoller = useRef<ReturnType<typeof setInterval> | null>(null);
   const demoPoller = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanRequestInFlight = useRef(false);
   useEffect(() => () => { if (scanPoller.current) clearInterval(scanPoller.current); if (demoPoller.current) clearInterval(demoPoller.current); }, []);
   const [scanProgress, setScanProgress] = useState<ScanProgressPayload>({
     jobId: 'demo-job',
@@ -66,10 +67,18 @@ export default function App() {
   function startScanPolling(jobId: string) {
     if (scanPoller.current) clearInterval(scanPoller.current);
     scanPoller.current = setInterval(async () => {
+      if (scanRequestInFlight.current) return;
+      scanRequestInFlight.current = true;
       try {
         const { job } = await recapApi.getScanStatus(jobId);
         if (!job) return;
-        setScanProgress(job);
+        setScanProgress((previous) => previous.jobId === job.jobId && previous.status === 'paused'
+          && job.status !== 'paused' ? previous : job);
+        if (job.status === 'paused') {
+          if (scanPoller.current) clearInterval(scanPoller.current);
+          scanPoller.current = null;
+          return;
+        }
         if (job.status === 'completed' || job.status === 'partial') {
           // The scan callback writes the job status and the report separately.
           // Keep polling until the confirmed report is retrievable.
@@ -88,8 +97,10 @@ export default function App() {
         }
       } catch {
         // A temporary network error should not cancel the scan.
+      } finally {
+        scanRequestInFlight.current = false;
       }
-    }, 2500);
+    }, 2000);
   }
 
   useEffect(() => {
@@ -106,11 +117,11 @@ export default function App() {
         const byYear: Record<number, RecapStats> = {};
         results.forEach((r) => { byYear[r.year] = r; });
         setLiveRecaps(byYear);
-        if (job && ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(job.status)) {
+        if (job && ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait', 'paused'].includes(job.status)) {
           setSelectedYear(job.year);
           setScanProgress(job);
           setScreen('scan');
-          startScanPolling(job.jobId);
+          if (job.status !== 'paused') startScanPolling(job.jobId);
         } else if (new URLSearchParams(window.location.search).get('screen') === 'stories') {
           const yearParam = Number(new URLSearchParams(window.location.search).get('year'));
           const ready = results.find((r) => r.year === yearParam) ??
@@ -324,6 +335,22 @@ export default function App() {
       {screen === 'scan' && (
         <ScanScreen
           progress={scanProgress}
+          onPause={async () => {
+            if (demoMode) {
+              if (demoPoller.current) clearInterval(demoPoller.current);
+              demoPoller.current = null;
+              setScanProgress((p) => ({ ...p, status: 'paused' }));
+              return;
+            }
+            try {
+              await recapApi.pauseScan(scanProgress.jobId);
+              if (scanPoller.current) clearInterval(scanPoller.current);
+              scanPoller.current = null;
+              setScanProgress((p) => ({ ...p, status: 'paused', floodWaitUntil: null }));
+            } catch (e) {
+              setAppError((e as Error).message || 'Не удалось поставить анализ на паузу.');
+            }
+          }}
           onCancel={async () => {
             if (demoMode) {
               if (demoPoller.current) clearInterval(demoPoller.current);
