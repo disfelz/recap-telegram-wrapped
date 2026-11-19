@@ -236,7 +236,12 @@ class MTProtoAuthManager:
         return self._new_client(session_str)
 
     async def _revoke_saved_session(self, telegram_user_id: int) -> None:
-        """Revoke a prior authorization; never leave the local credential behind."""
+        """Revoke a saved authorization used by an explicit /delete or replacement.
+
+        Unlike scan finalization, this operation MUST retain the encrypted
+        credential when Telegram does not confirm revocation. Otherwise a
+        failed /delete would destroy the only means of retrying LogOut.
+        """
         session = self._store.load(telegram_user_id)
         if not session:
             return
@@ -245,9 +250,10 @@ class MTProtoAuthManager:
             await client.connect()
             if await client.is_user_authorized():
                 await self.terminate_client_session(client)
+            # A session already rejected as unauthorized is also safe to remove.
+            self._store.delete(telegram_user_id)
         finally:
             await client.disconnect()
-            self._store.delete(telegram_user_id)
 
     async def revoke_all_for_user(self, telegram_user_id: int) -> None:
         # Keep the encrypted credential if the Telegram LogOut call fails:
