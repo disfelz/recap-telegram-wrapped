@@ -64,6 +64,12 @@ export const recapApi = {
       jobId ? `/api/scan/status?jobId=${encodeURIComponent(jobId)}` : '/api/scan/status'
     ),
 
+  pauseScan: (jobId: string) =>
+    apiFetch<{ paused: boolean }>('/api/scan/pause', {
+      method: 'POST',
+      body: JSON.stringify({ jobId }),
+    }),
+
   cancelScan: (jobId: string) =>
     apiFetch<{ cancelled: boolean }>('/api/scan/cancel', {
       method: 'POST',
