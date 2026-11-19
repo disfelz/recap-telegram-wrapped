@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Flame,
   Sparkles,
+  BarChart3,
 } from 'lucide-react';
 import type { RecapStats } from '../../../shared/types';
 import { CountUp } from '../components/CountUp';
@@ -42,6 +43,7 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
 }) => {
   const [slide, setSlide] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [revealed, setRevealed] = useState(false);
   const touchStartX = useRef<number | null>(null);
 
@@ -88,8 +90,11 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
   const handleExport = async (fmt: 'story' | 'square') => {
     try {
       setExporting(true);
+      setExportError('');
       haptic('medium');
-      await downloadOrShareCard(stats, fmt, hideChatNames);
+      await downloadOrShareCard(stats, fmt, true);
+    } catch {
+      setExportError('Не удалось сформировать открытку. Попробуй ещё раз.');
     } finally {
       setExporting(false);
     }
@@ -99,22 +104,24 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
     switch (slide) {
       case 0:
         return (
-          <div style={{ margin: 'auto 0', textAlign: 'center' }}>
-            <span className="pill" style={{ marginBottom: 18 }}>
-              <Sparkles size={13} /> RECAP {stats.year}
-            </span>
-            <h1 className="display-font" style={{ fontSize: 64, margin: '8px 0', lineHeight: 0.95 }}>
-              {stats.year}
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 16, lineHeight: 1.55 }}>
-              Твой год в Telegram — только реальные исходящие сообщения и чистый ритм общения.
-            </p>
-            {stats.completionStatus === 'partial' && (
-              <div style={{ marginTop: 16, color: 'var(--warning)', fontSize: 13 }}>
-                Частичная статистика (не все чаты были доступны)
-              </div>
-            )}
-          </div>
+          <>
+            <div style={{margin:'auto 0',textAlign:'left'}}>
+              <div className="ref-story-chapter">RECAP · ПЕРСОНАЛЬНАЯ ХРОНИКА</div>
+              <h1 className="display-font" style={{fontSize:'clamp(70px,23vw,100px)',letterSpacing:-6,lineHeight:.95,margin:'12px 0 38px',
+                background:'linear-gradient(120deg,#f0ebff,#9daeff)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
+                {stats.year}
+              </h1>
+              <div style={{width:70,height:1,background:'linear-gradient(90deg,#a996ff,transparent)',marginBottom:18}}/>
+              <p style={{fontSize:17,color:'#f0eefa',maxWidth:285,lineHeight:1.48}}>
+                Год в цифрах. Без домыслов — только твои отправленные сообщения.
+              </p>
+              {stats.completionStatus === 'partial' &&
+                <p style={{fontSize:12,color:'var(--warning)',marginTop:15}}>Часть чатов не была досчитана.</p>}
+            </div>
+            <div className="ref-story-footer" style={{display:'flex',justifyContent:'space-between',gap:8}}>
+              <span>Проверено {stats.metrics.processedDialogs} диалогов</span><span style={{color:'#aaa0ef'}}>Нажми далее →</span>
+            </div>
+          </>
         );
 
       case 1:
@@ -148,41 +155,31 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
 
       case 2:
         return (
-          <div style={{ margin: 'auto 0' }}>
-            <div style={{ fontSize: 12, color: 'var(--accent-purple)', fontWeight: 700 }}>
-              03 · САМЫЙ АКТИВНЫЙ МЕСЯЦ
-            </div>
-            <h2 className="display-font" style={{ fontSize: 44, margin: '10px 0 4px' }}>
-              {MONTHS_FULL[peakMonthIdx]}
-            </h2>
-            <p style={{ color: 'var(--text-secondary)', margin: '0 0 26px', fontSize: 15 }}>
-              <strong style={{ color: 'var(--text-primary)' }}>
-                {stats.byMonth[peakMonthIdx].toLocaleString('ru-RU')}
-              </strong>{' '}
-              отправленных сообщений за месяц.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 5, alignItems: 'end', height: 164 }}>
-              {stats.byMonth.map((v, i) => (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end' }}>
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{ height: `${Math.max(8, (v / maxMonthVal) * 130)}px` }}
-                    transition={{ duration: 0.55, delay: i * 0.03 }}
-                    style={{
-                      width: '100%',
-                      borderRadius: 6,
-                      background: i === peakMonthIdx
-                        ? 'linear-gradient(180deg, #A996FF, #85B8FF)'
-                        : 'rgba(247,245,255,0.16)',
-                    }}
-                  />
-                  <span style={{ fontSize: 9, color: i === peakMonthIdx ? '#F7F5FF' : 'var(--text-secondary)' }}>
-                    {MONTHS_SHORT[i][0]}
-                  </span>
+          <>
+            <div className="ref-story-chapter" style={{marginTop:8}}>03 · КУЛЬМИНАЦИЯ ГОДА</div>
+            <div style={{margin:'auto 0'}}>
+              <span style={{color:'#b7b3c4',fontSize:14}}>Самый насыщенный месяц</span>
+              <h2 className="display-font" style={{fontSize:43,lineHeight:1.1,margin:'5px 0 8px'}}>{MONTHS_FULL[peakMonthIdx]}</h2>
+              <div style={{fontSize:14,color:'#9a96ae'}}>
+                <strong style={{color:'#b9a2ff',fontSize:18}}>{stats.byMonth[peakMonthIdx].toLocaleString('ru-RU')}</strong> отправленных сообщений
+              </div>
+              <div className="ref-story-card" style={{marginTop:26}}>
+                <div style={{height:156,display:'grid',gridTemplateColumns:'repeat(12,minmax(0,1fr))',alignItems:'end',gap:5}}>
+                  {stats.byMonth.map((v,i)=>(
+                    <div key={i} style={{height:'100%',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',gap:7,minWidth:0}}>
+                      <motion.div initial={{height:0}} animate={{height:Math.max(4,v/maxMonthVal*122)}} transition={{duration:.4,delay:i*.025}}
+                        style={{width:'100%',borderRadius:5,
+                          background:i===peakMonthIdx?'linear-gradient(#a996ff,#85b8ff)':'#353241'}}/>
+                      <span style={{fontSize:9,color:i===peakMonthIdx?'#fff':'#838096'}}>{MONTHS_SHORT[i]}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
+            <div className="ref-story-footer">
+              В этом месяце прошло {stats.totalMessages?Math.round(stats.byMonth[peakMonthIdx]/stats.totalMessages*100):0}% твоей годовой активности.
+            </div>
+          </>
         );
 
       case 3:
@@ -226,41 +223,37 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
 
       case 4:
         return (
-          <div style={{ margin: 'auto 0', textAlign: 'center' }}>
-            <div style={{ fontSize: 12, color: 'var(--accent-purple)', fontWeight: 700 }}>
-              05 · ЛЮБИМОЕ ВРЕМЯ ОБЩЕНИЯ
+          <>
+            <div className="ref-story-chapter" style={{marginTop:8}}>05 · БИОРИТМ 24/7</div>
+            <div style={{margin:'auto 0',textAlign:'center'}}>
+              <span className="pill" style={{fontSize:10,marginBottom:8}}>Время активности</span>
+              <h2 className="display-font" style={{fontSize:36,margin:'8px 0 18px',letterSpacing:-1}}>
+                {String(peakHourIdx).padStart(2,'0')}:00–{String((peakHourIdx+1)%24).padStart(2,'0')}:00
+              </h2>
+              <svg viewBox="0 0 280 280" className="ref-story-radial" role="img" aria-label="Почасовая активность">
+                {[0,1,2].map((n)=><circle key={n} cx="140" cy="140" r={64+n*32} fill="none" stroke="rgba(169,150,255,.1)"/>)}
+                {stats.byHour.map((v,h)=>{
+                  const a=h/24*Math.PI*2-Math.PI/2;
+                  const r=54,r2=61+Math.max(3,v/Math.max(1,...stats.byHour)*68);
+                  return <line key={h} x1={140+Math.cos(a)*r} y1={140+Math.sin(a)*r}
+                    x2={140+Math.cos(a)*r2} y2={140+Math.sin(a)*r2}
+                    stroke={h===peakHourIdx?'#b19bff':h<6?'#9e8ee6':'#85b8ff'}
+                    strokeWidth={h===peakHourIdx?5:3.5} strokeLinecap="round" opacity={h===peakHourIdx?1:.7}/>;
+                })}
+                <circle cx="140" cy="140" r="49" fill="#151226" stroke="#55467c" strokeWidth="1"/>
+                <text x="140" y="136" fill="#a6a0bf" fontSize="11" textAnchor="middle">ПИК</text>
+                <text x="140" y="158" fill="#f3f0ff" fontSize="25" fontWeight="bold" textAnchor="middle">{peakHourIdx}ч</text>
+                <text x="140" y="14" fill="#9693ab" fontSize="11" textAnchor="middle">00</text>
+                <text x="266" y="144" fill="#9693ab" fontSize="11" textAnchor="middle">06</text>
+                <text x="140" y="277" fill="#9693ab" fontSize="11" textAnchor="middle">12</text>
+                <text x="15" y="144" fill="#9693ab" fontSize="11" textAnchor="middle">18</text>
+              </svg>
+              <p style={{fontSize:12,color:'#9693ab'}}>
+                В пиковый час отправлено {stats.byHour[peakHourIdx].toLocaleString('ru-RU')} сообщений.
+              </p>
             </div>
-            <div
-              className="display-font tabular"
-              style={{
-                fontSize: 66,
-                fontWeight: 700,
-                margin: '18px 0 8px',
-                background: 'linear-gradient(135deg, #A996FF, #85B8FF)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}
-            >
-              {String(peakHourIdx).padStart(2, '0')}:00
-            </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 15, margin: '0 0 20px' }}>
-              Пиковый час по часовому поясу {stats.timezone}: {stats.byHour[peakHourIdx].toLocaleString('ru-RU')} сообщений.
-            </p>
-            <div className="card" style={{ display: 'flex', justifyContent: 'space-around', fontSize: 12 }}>
-              <div>
-                <div style={{ color: 'var(--text-secondary)' }}>Ночь (00–05)</div>
-                <strong className="tabular">{stats.byHour.slice(0, 6).reduce((a, b) => a + b, 0).toLocaleString('ru-RU')}</strong>
-              </div>
-              <div>
-                <div style={{ color: 'var(--text-secondary)' }}>День (12–17)</div>
-                <strong className="tabular">{stats.byHour.slice(12, 18).reduce((a, b) => a + b, 0).toLocaleString('ru-RU')}</strong>
-              </div>
-              <div>
-                <div style={{ color: 'var(--text-secondary)' }}>Вечер (18–23)</div>
-                <strong className="tabular">{stats.byHour.slice(18, 24).reduce((a, b) => a + b, 0).toLocaleString('ru-RU')}</strong>
-              </div>
-            </div>
-          </div>
+            <div className="ref-story-footer">График построен с учётом часового пояса {stats.timezone}.</div>
+          </>
         );
 
       case 5:
@@ -366,52 +359,37 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
 
       case 8:
         return (
-          <div style={{ margin: 'auto 0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 12, color: 'var(--accent-purple)', fontWeight: 700 }}>
-                09 · ГЛАВНЫЕ ПЕРЕПИСКИ
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleHideNames();
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  background: 'rgba(247,245,255,0.08)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 99,
-                  padding: '5px 10px',
-                  color: 'var(--text-primary)',
-                  fontSize: 11,
-                  cursor: 'pointer',
-                }}
-              >
-                {hideChatNames ? <Eye size={13} /> : <EyeOff size={13} />}
-                {hideChatNames ? 'Показать имена' : 'Скрыть имена'}
+          <>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginTop:8}}>
+              <div className="ref-story-chapter">09 · ТОЧКИ ПРИТЯЖЕНИЯ</div>
+              <button type="button" className="ref-story-btn" style={{padding:'6px 9px'}}
+                onClick={(e)=>{e.stopPropagation();onToggleHideNames();}}>
+                {hideChatNames?<Eye size={13}/>:<EyeOff size={13}/>}
+                {hideChatNames?'Показать имена':'Скрыть имена'}
               </button>
             </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '8px 0 14px' }}>
-              Рейтинг строго по твоим отправленным сообщениям.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {stats.topPrivateChats.slice(0, 4).map((c, idx) => (
-                <div key={c.chatHash} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px' }}>
-                  <div>
-                    <span style={{ color: 'var(--accent-purple)', fontWeight: 700, marginRight: 10 }}>
-                      0{idx + 1}
-                    </span>
-                    <strong>{hideChatNames ? `Личный чат #${idx + 1}` : c.displayLabel}</strong>
-                  </div>
-                  <span className="tabular" style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>
-                    {c.sentMessages.toLocaleString('ru-RU')}
-                  </span>
+            <div style={{margin:'auto 0'}}>
+              <h2 className="display-font" style={{fontSize:25,margin:'0 0 4px'}}>Самые активные чаты</h2>
+              <p style={{color:'#9693ab',fontSize:11,marginBottom:17}}>Рейтинг строго по твоим исходящим сообщениям</p>
+              {[
+                {title:'ЛИЧНЫЕ ПЕРЕПИСКИ · ТОП-3',items:stats.topPrivateChats.slice(0,3),group:false},
+                {title:'ГРУППОВЫЕ ЧАТЫ · ТОП-3',items:stats.topGroupChats.slice(0,3),group:true},
+              ].map((section)=><div key={section.title} className="ref-story-card" style={{marginBottom:10,padding:'13px 12px'}}>
+                <div style={{fontSize:10,letterSpacing:1.1,color:section.group?'#85b8ff':'#a996ff',marginBottom:9}}>
+                  {section.title}
                 </div>
-              ))}
+                {section.items.length===0&&<p style={{fontSize:12,color:'#9693ab'}}>Данных нет</p>}
+                {section.items.map((c,i)=><div key={c.chatHash}
+                  style={{display:'grid',gridTemplateColumns:'20px minmax(0,1fr) auto',gap:7,marginTop:7,fontSize:11,color:'#d5d0e2'}}>
+                  <span style={{color:'#9693ab'}}>0{i+1}</span>
+                  <span style={{overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
+                    {hideChatNames?(section.group?'Группа ':'Личный чат ')+(i+1):c.displayLabel}
+                  </span><span style={{color:'#b6a5ee'}}>{c.sentMessages.toLocaleString('ru-RU')}</span>
+                </div>)}
+              </div>)}
             </div>
-          </div>
+            <div className="ref-story-footer">По умолчанию имена скрыты на экспортируемой открытке.</div>
+          </>
         );
 
       case 9:
@@ -437,91 +415,70 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
 
       case 10:
         return (
-          <div style={{ margin: 'auto 0' }}>
-            <div style={{ fontSize: 12, color: 'var(--accent-purple)', fontWeight: 700 }}>
-              11 · ХАРАКТЕР ОБЩЕНИЯ
+          <>
+            <div className="ref-story-chapter" style={{marginTop:8}}>11 · ТВОЁ ЗВУЧАНИЕ</div>
+            <div style={{margin:'auto 0',textAlign:'center'}}>
+              <div style={{width:140,height:140,borderRadius:'50%',margin:'0 auto 18px',display:'grid',placeItems:'center',
+                background:'repeating-radial-gradient(circle,#100f1d 0 8px,#24203c 9px 10px)',border:'1px solid rgba(169,150,255,.18)'}}>
+                <div style={{width:42,height:42,borderRadius:'50%',background:'#a996ff',boxShadow:'0 0 20px rgba(169,150,255,.4)',display:'grid',placeItems:'center'}}>
+                  <div style={{width:12,height:12,borderRadius:'50%',background:'#151126'}}/>
+                </div>
+              </div>
+              <span className="ref-story-chapter">RECAP · {stats.persona.code.replace(/_/g,'-')}</span>
+              <h2 className="display-font" style={{fontSize:32,lineHeight:1.06,margin:'10px 0'}}>{stats.persona.title}</h2>
+              <p style={{fontSize:12,color:'#a39fb8',maxWidth:280,margin:'0 auto',lineHeight:1.5}}>{stats.persona.subtitle}</p>
+              <div className="ref-story-card" style={{marginTop:18,textAlign:'left'}}>
+                <span style={{color:'#9693ab',fontSize:10}}>ПОЧЕМУ ВЫПАЛ ЭТОТ ХАРАКТЕР</span>
+                <ul style={{paddingLeft:15,margin:'10px 0 0',color:'#c6c1dd',fontSize:11,lineHeight:1.7}}>
+                  {stats.persona.traits.map((trait)=><li key={trait}>{trait}</li>)}
+                </ul>
+              </div>
             </div>
-            <h2 className="display-font" style={{ fontSize: 38, margin: '12px 0 10px', lineHeight: 1.06 }}>
-              {stats.persona.title}
-            </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 15, lineHeight: 1.55 }}>
-              {stats.persona.subtitle}
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '18px 0' }}>
-              {stats.persona.traits.map((t) => (
-                <span key={t} className="pill">
-                  {t}
-                </span>
-              ))}
-            </div>
-            <div className="card" style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Определено прозрачными правилами по часам, доле аудио, медиа и групповых чатов — без
-              чтения и ИИ-анализа текстов переписок.
-            </div>
-          </div>
+            <div className="ref-story-footer">Прозрачные правила без ИИ и чтения текстов переписок.</div>
+          </>
         );
 
       case 11:
       default:
         return (
-          <div style={{ margin: 'auto 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92, rotateX: 12 }}
-              animate={{ opacity: revealed ? 1 : 0.4, scale: revealed ? 1 : 0.96, rotateX: 0 }}
-              transition={{ duration: 0.55 }}
-              className="card"
-              style={{
-                background:
-                  'linear-gradient(155deg, rgba(169,150,255,0.22), rgba(21,19,34,0.96) 45%, rgba(133,184,255,0.18))',
-                borderColor: 'rgba(169,150,255,0.45)',
-                padding: 22,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--accent-purple)', fontWeight: 700 }}>
-                <span>RECAP · {stats.year}</span>
-                <span>{stats.completionStatus === 'partial' ? 'ЧАСТИЧНАЯ' : 'VERIFIED'}</span>
-              </div>
-              <div className="display-font tabular" style={{ fontSize: 44, fontWeight: 700, margin: '10px 0 2px' }}>
-                {stats.totalMessages.toLocaleString('ru-RU')}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                отправленных сообщений · {stats.persona.title}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12.5 }}>
-                <div>Пик: <strong>{MONTHS_FULL[peakMonthIdx]}</strong></div>
-                <div>Серия: <strong>{stats.longestStreakDays} дн.</strong></div>
-                <div>Голосовые: <strong>{stats.voiceCount}</strong></div>
-                <div>Кружки: <strong>{stats.videoNoteCount}</strong></div>
-              </div>
-            </motion.div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button
-                className="btn btn-primary"
-                disabled={exporting}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleExport('story');
-                }}
-              >
-                <Share2 size={15} /> 1080×1920
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={exporting}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleExport('square');
-                }}
-              >
-                <Download size={15} /> 1080×1080
-              </button>
+          <>
+            <div className="ref-story-chapter" style={{marginTop:8}}>12 · ИТОГОВАЯ ОТКРЫТКА</div>
+            <div style={{margin:'auto 0'}}>
+              <motion.div initial={{opacity:0,scale:.92,y:15}} animate={{opacity:revealed?1:.3,scale:revealed?1:.96,y:0}}
+                transition={{duration:.5}} className="ref-story-final">
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:11,fontWeight:700}}>
+                  <span style={{display:'flex',alignItems:'center',gap:7}}><span style={{color:'#a996ff'}}>◎</span> RECAP</span>
+                  <span className="pill" style={{padding:'4px 9px'}}>{stats.year}</span>
+                </div>
+                <div style={{marginTop:17}}>
+                  <span className="ref-story-final-label">ОТПРАВЛЕНО СООБЩЕНИЙ</span>
+                  <div className="ref-story-final-total">{stats.totalMessages.toLocaleString('ru-RU')}</div>
+                </div>
+                <div className="ref-story-final-grid">
+                  <div><label>ПИКОВЫЙ МЕСЯЦ</label><b>{MONTHS_FULL[peakMonthIdx]}</b></div>
+                  <div><label>АКТИВНЫХ ДНЕЙ</label><b>{stats.activeDays} · серия {stats.longestStreakDays}д</b></div>
+                  <div className="wide"><label>ХАРАКТЕР</label><b>{stats.persona.title}</b></div>
+                </div>
+                {stats.completionStatus==='partial'&&<p style={{color:'#ffd17a',fontSize:10,marginTop:11}}>Частичная статистика</p>}
+              </motion.div>
             </div>
-            <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--text-secondary)' }}>
-              По умолчанию имена собеседников и личные ID скрыты на экспортируемой карточке.
+            <div>
+              <div className="ref-story-cta">
+                <button type="button" className="ref-story-btn primary" disabled={exporting}
+                  onClick={(e)=>{e.stopPropagation();void handleExport('story');}}><Download size={14}/> 9:16 (1080×1920)</button>
+                <button type="button" className="ref-story-btn" disabled={exporting}
+                  onClick={(e)=>{e.stopPropagation();void handleExport('square');}}><Download size={14}/> 1:1 (1080×1080)</button>
+                <button type="button" className="ref-story-btn" disabled={exporting}
+                  onClick={(e)=>{e.stopPropagation();void handleExport('story');}}><Share2 size={14}/> Поделиться</button>
+                <button type="button" className="ref-story-btn"
+                  onClick={(e)=>{e.stopPropagation();onClose();}}><BarChart3 size={14}/> Аналитика</button>
+              </div>
+              {exportError&&<div role="alert" style={{fontSize:11,color:'#ffd17a',marginTop:8}}>{exportError}</div>}
             </div>
-          </div>
+          </>
         );
+
+
     }
   };
 
