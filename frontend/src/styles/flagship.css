@@ -280,7 +280,7 @@ body{background:#09090f}
 .recap-scan-stage strong{color:#f0edfa;font-size:13px;line-height:1.4;font-weight:700}
 .flagship-scan .flagship-scan-metrics{gap:10px;margin-top:15px}
 .flagship-scan .flagship-scan-metrics>div{min-height:93px;padding:17px 14px;background:rgba(21,19,34,.81);border-radius:20px}
-.flagship-scan .flagship-scan-metrics span{font-size:10px;letter-spacing:1px;margin-bottom:10px}
+.flagship-scan .flagship-scan-metrics > div > span{font-size:10px;letter-spacing:1px;margin-bottom:10px}
 .flagship-scan .flagship-scan-metrics strong{font-size:clamp(23px,7.4vw,31px);letter-spacing:-1px;white-space:nowrap}
 .flagship-scan .flagship-scan-metrics small{font-size:12px;letter-spacing:0;font-weight:500}
 .flagship-scan .flagship-flood-card{margin-top:14px;margin-bottom:0}
