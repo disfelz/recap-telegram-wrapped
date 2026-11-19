@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -63,6 +64,8 @@ except ImportError:  # pragma: no cover - fallback for isolated offline test env
         user_id: int = 0
 
 from .models import DialogCheckpoint, MessageKind, ScanCheckpoint
+
+logger = logging.getLogger("recap.scanner")
 
 
 SYSTEM_USER_IDS = frozenset({
@@ -440,7 +443,7 @@ class RecapAnalyzer:
         sleep_fn: Callable[[float], Awaitable[None]] = asyncio.sleep,
         progress_cb: Optional[Callable[[dict], Awaitable[None]]] = None,
         cancel_event: Optional[asyncio.Event] = None,
-        checkpoint_every_n_messages: int = 25,
+        checkpoint_every_n_messages: int = 100,
     ) -> None:
         self.source = source
         self.store = checkpoint_store
@@ -449,6 +452,8 @@ class RecapAnalyzer:
         self.progress_cb = progress_cb
         self.cancel_event = cancel_event or asyncio.Event()
         self.checkpoint_every = checkpoint_every_n_messages
+        self._last_progress_at = 0.0
+        self._progress_interval_sec = 5.0
 
     async def _emit_progress(
         self,
@@ -460,8 +465,10 @@ class RecapAnalyzer:
         if not self.progress_cb:
             return
         processed = sum(1 for d in cp.dialogs.values() if d.completed or d.failed)
-        await self.progress_cb({
-            "jobId": cp.job_id,
+        self._last_progress_at = time.monotonic()
+        try:
+            await self.progress_cb({
+                "jobId": cp.job_id,
             "telegramUserId": cp.telegram_user_id,
             "year": cp.year,
             "timezone": cp.timezone,
@@ -471,7 +478,11 @@ class RecapAnalyzer:
             "totalEligibleDialogs": len(cp.dialogs),
             "outgoingFound": cp.total_messages,
             "floodWaitUntil": flood_wait_until,
-        })
+            })
+        except Exception as exc:
+            # A progress-reporting outage must not corrupt the statistics or mark a dialog failed.
+            # The final completion callback is separately verified and retried by the server.
+            logger.warning("Progress delivery failed: error_type=%s", type(exc).__name__)
 
     async def _call_with_flood_wait(
         self,
@@ -596,12 +607,15 @@ class RecapAnalyzer:
                 if self.store:
                     self.store.save(cp)
                 break
-            except (ChannelPrivateError, ChatAdminRequiredError, UserDeactivatedBanError, PermissionError):
+            except (ChannelPrivateError, ChatAdminRequiredError, UserDeactivatedBanError, PermissionError) as exc:
                 dcp.failed = True
+                logger.warning("Dialog unavailable: chat_type=%s error_type=%s", dcp.chat_type, type(exc).__name__)
                 if self.store:
                     self.store.save(cp)
-            except Exception:
+            except Exception as exc:
                 dcp.failed = True
+                # Do not log dialog identifiers, names, message text or exception strings.
+                logger.warning("Dialog scan failed: chat_type=%s error_type=%s", dcp.chat_type, type(exc).__name__)
                 if self.store:
                     self.store.save(cp)
 
@@ -726,6 +740,10 @@ class RecapAnalyzer:
             if self.store and msgs_since_save > 0:
                 self.store.save(cp)
                 msgs_since_save = 0
+
+            # Update the message counter within large dialogs without flooding Worker/D1.
+            if time.monotonic() - self._last_progress_at >= self._progress_interval_sec:
+                await self._emit_progress(cp, "scanning", "full_scan")
 
     def _build_result_payload(
         self,
