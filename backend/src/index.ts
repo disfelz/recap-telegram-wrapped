@@ -111,7 +111,7 @@ export default {
         return jsonResponse({ ok: true, ignored: true }, 200, corsOrigin);
       }
       const now = new Date().toISOString();
-      await env.DB.prepare(
+      const updateJob = await env.DB.prepare(
         `UPDATE scan_jobs
          SET status = ?, stage = ?, processed_dialogs = ?, total_eligible_dialogs = ?,
              outgoing_found = ?, flood_wait_until = ?, error_message = ?, updated_at = ?
@@ -152,6 +152,46 @@ export default {
             now
           )
           .run();
+      }
+
+      // Notify the user once after a job reaches a terminal state. The D1 status
+      // transition is guarded above, so a retried callback cannot send duplicates.
+      if (updateJob.meta.changes > 0 &&
+          ['completed', 'partial', 'failed'].includes(payload.status)) {
+        const finished = payload.status === 'completed';
+        const partial = payload.status === 'partial';
+        const message = finished
+          ? `✅ <b>Твой RECAP за ${payload.year} год готов!</b>\n\nТочная статистика собрана. Открывай свои итоги.`
+          : partial
+          ? `📊 <b>RECAP за ${payload.year} год — частичный результат</b>\n\nНе все переписки удалось обработать. Можно посмотреть подтверждённые цифры и затем продолжить анализ.`
+          : `⚠️ <b>Анализ RECAP за ${payload.year} год остановился</b>\n\nОткрой приложение, чтобы проверить статус и повторить попытку.`;
+
+        try {
+          const telegramResponse = await fetch(
+            `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: payload.telegramUserId,
+                text: message,
+                parse_mode: 'HTML',
+                reply_markup: {
+                  inline_keyboard: [[{
+                    text: 'Открыть RECAP',
+                    web_app: { url: `${env.APP_URL}?screen=stories` },
+                  }]],
+                },
+              }),
+            }
+          );
+          if (!telegramResponse.ok) {
+            console.warn('RECAP completion notice was not delivered', telegramResponse.status);
+          }
+        } catch {
+          // Delivery failure must not roll back the completed analysis.
+          console.warn('RECAP completion notice request failed');
+        }
       }
 
       return jsonResponse({ ok: true }, 200, corsOrigin);
