@@ -28,6 +28,7 @@ export const ScanScreen: React.FC<Props> = ({
   const failed = progress.status === 'failed';
   const cancelled = progress.status === 'cancelled';
   const active = !done && !failed && !cancelled && !paused;
+  const mtprotoConnected = ['quick_preview', 'scanning', 'paused_flood_wait'].includes(progress.status);
   const fullScan = progress.stage === 'full_scan';
   const total = Math.max(0, progress.totalEligibleDialogs || 0);
   const finished = Math.max(0, Math.min(total, progress.processedDialogs || 0));
@@ -86,7 +87,10 @@ export const ScanScreen: React.FC<Props> = ({
       </header>
 
       <div className="recap-scan-badges">
-        <span className="recap-scan-badge connected"><Radio size={15} strokeWidth={2.2}/> MTProto подключён</span>
+        <span className={`recap-scan-badge ${mtprotoConnected ? 'connected' : 'secondary'}`}>
+          <Radio size={15} strokeWidth={2.2}/>
+          {mtprotoConnected ? 'MTProto подключён' : progress.status === 'queued' ? 'Подключаем MTProto' : 'MTProto отключён'}
+        </span>
         <span className="recap-scan-badge secondary">
           {done ? (progress.status === 'partial' ? 'Частичная статистика' : 'Готово')
             : paused ? 'На паузе'
