@@ -34,17 +34,24 @@ async function sendTelegramMessage(
   });
 }
 
-function openRecapKeyboard(appUrl: string, path = '') {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: 'Открыть RECAP',
-          web_app: { url: `${appUrl}${path}` },
-        },
-      ],
+function openRecapKeyboard(appUrl: string, path = '', showSourceCode = false) {
+  const inlineKeyboard: Record<string, unknown>[][] = [
+    [
+      {
+        text: 'Открыть RECAP',
+        web_app: { url: `${appUrl}${path}` },
+      },
     ],
-  };
+  ];
+  if (showSourceCode) {
+    inlineKeyboard.push([
+      {
+        text: 'Исходный код · GitHub',
+        url: 'https://github.com/disfelz/recap-telegram-wrapped',
+      },
+    ]);
+  }
+  return { inline_keyboard: inlineKeyboard };
 }
 
 export async function handleBotUpdate(update: TelegramUpdate, env: BotEnv): Promise<void> {
@@ -84,7 +91,7 @@ export async function handleBotUpdate(update: TelegramUpdate, env: BotEnv): Prom
         '• Временный вход используется только для подсчёта; после завершения выполняем Telegram LogOut.',
       ].join('\n');
 
-      await sendTelegramMessage(env.BOT_TOKEN, chatId, text, openRecapKeyboard(env.APP_URL));
+      await sendTelegramMessage(env.BOT_TOKEN, chatId, text, openRecapKeyboard(env.APP_URL, '', true));
       break;
     }
 
