@@ -193,3 +193,30 @@ async def test_manual_pause_keeps_session_until_resume(configured_server, monkey
     await asyncio.wait_for(task, timeout=3)
     assert client.logouts == 1
     assert not store._path(user_id).exists()
+
+
+@pytest.mark.asyncio
+async def test_explicit_revoke_retry_keeps_credential_when_telegram_fails(configured_server, monkeypatch):
+    _server, manager, store = configured_server
+    user_id = 845105
+    store.save(user_id, "RETRYABLE-ENCRYPTED-SESSION")
+    failing = FakeTelegramClient(fail_logout=True)
+    async def authorized():
+        return True
+    failing.is_user_authorized = authorized  # type: ignore[attr-defined]
+    monkeypatch.setattr(manager, "_new_client", lambda session_str="": failing)
+
+    with pytest.raises(ConnectionError):
+        await manager.revoke_all_for_user(user_id)
+
+    assert failing.logouts == 1
+    assert store._path(user_id).is_file()
+    assert store.load(user_id) == "RETRYABLE-ENCRYPTED-SESSION"
+
+    restored = FakeTelegramClient()
+    restored.is_user_authorized = authorized  # type: ignore[attr-defined]
+    monkeypatch.setattr(manager, "_new_client", lambda session_str="": restored)
+    await manager.revoke_all_for_user(user_id)
+
+    assert restored.logouts == 1
+    assert not store._path(user_id).exists()
