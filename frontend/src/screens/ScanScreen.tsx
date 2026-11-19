@@ -24,6 +24,7 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
   const isFlood = progress.status === 'paused_flood_wait';
   const isDone = progress.status === 'completed' || progress.status === 'partial';
   const isCancelled = progress.status === 'cancelled';
+  const isFailed = progress.status === 'failed';
 
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -86,6 +87,8 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
             ? 'Пауза Telegram (FloodWait)'
             : isCancelled
             ? 'Сканирование остановлено'
+            : isFailed
+            ? 'Анализ прервался'
             : 'Считаем твои сообщения'}
         </h2>
         <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
@@ -119,6 +122,19 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
           </div>
         </div>
       </div>
+
+      {!isDone && !isCancelled && !isFailed && (
+        <div className="card" style={{ fontSize: 13, lineHeight: 1.55 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Можно не ждать на этом экране</div>
+          <div style={{ color: 'var(--text-secondary)' }}>
+            Можешь закрыть Mini App — анализ выполняется на сервере. Бот сообщит о готовом результате,
+            а после повторного открытия RECAP покажет сохранённый прогресс.
+          </div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginTop: 8 }}>
+            Важно: на бесплатном Render перезапуск сервера может прервать анализ.
+          </div>
+        </div>
+      )}
 
       {isFlood && (
         <div
@@ -164,9 +180,9 @@ export const ScanScreen: React.FC<ScanScreenProps> = ({
               </button>
             )}
           </>
-        ) : isCancelled ? (
+        ) : isCancelled || isFailed ? (
           <button className="btn btn-primary" onClick={onResume}>
-            <PlayCircle size={17} /> Продолжить с места остановки
+            <PlayCircle size={17} /> {isFailed ? 'Повторить анализ' : 'Продолжить с места остановки'}
           </button>
         ) : (
           <button className="btn btn-danger" onClick={onCancel}>
