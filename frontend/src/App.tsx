@@ -39,20 +39,65 @@ export default function App() {
     errorMessage: null,
   });
 
+  // The scanner runs server-side, independently of this Telegram WebView.
+  // Reconnect to the user's latest job after reopening the Mini App.
+  function startScanPolling(jobId: string) {
+    if (scanPoller.current) clearInterval(scanPoller.current);
+    scanPoller.current = setInterval(async () => {
+      try {
+        const { job } = await recapApi.getScanStatus(jobId);
+        if (!job) return;
+        setScanProgress(job);
+        if (['completed', 'partial', 'failed', 'cancelled'].includes(job.status)) {
+          if (scanPoller.current) clearInterval(scanPoller.current);
+          scanPoller.current = null;
+          if (job.status === 'completed' || job.status === 'partial') {
+            const { results } = await recapApi.getSavedRecaps();
+            const byYear: Record<number, RecapStats> = {};
+            results.forEach((r) => { byYear[r.year] = r; });
+            setLiveRecaps(byYear);
+          }
+        }
+      } catch {
+        // A temporary network error should not cancel the scan.
+      }
+    }, 2500);
+  }
+
   useEffect(() => {
     initTelegramMiniApp();
-    if (!demoMode) {
-      recapApi
-        .getSavedRecaps()
-        .then(({ results }) => {
-          const byYear: Record<number, RecapStats> = {};
-          results.forEach((r) => {
-            byYear[r.year] = r;
-          });
-          setLiveRecaps(byYear);
-        })
-        .catch(() => setAppError('Не удалось получить сохранённые итоги через Live API. Проверь подключение и открытие внутри Telegram.'));
+    if (demoMode) return;
+    let disposed = false;
+    async function reconnect() {
+      try {
+        const [{ results }, { job }] = await Promise.all([
+          recapApi.getSavedRecaps(),
+          recapApi.getScanStatus(),
+        ]);
+        if (disposed) return;
+        const byYear: Record<number, RecapStats> = {};
+        results.forEach((r) => { byYear[r.year] = r; });
+        setLiveRecaps(byYear);
+        if (job && ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(job.status)) {
+          setSelectedYear(job.year);
+          setScanProgress(job);
+          setScreen('scan');
+          startScanPolling(job.jobId);
+        } else if (new URLSearchParams(window.location.search).get('screen') === 'stories') {
+          const ready = results.find((r) => r.completionStatus === 'completed') ?? results[0];
+          if (ready) {
+            setSelectedYear(ready.year);
+            setScreen('stories');
+          }
+        }
+      } catch {
+        if (!disposed) {
+          setAppError('Не удалось связаться с RECAP API. Проверь подключение и открой приложение через Telegram.');
+        }
+      }
     }
+    void reconnect();
+    return () => { disposed = true; };
   }, [demoMode]);
 
   const activeDataMap = demoMode ? DEMO_RECAP_BY_YEAR : liveRecaps;
@@ -154,25 +199,7 @@ export default function App() {
       });
       setScreen('scan');
 
-      scanPoller.current = setInterval(async () => {
-        try {
-          const { job } = await recapApi.getScanStatus(jobId);
-          if (!job) return;
-          setScanProgress(job);
-          if (['completed', 'partial', 'failed', 'cancelled'].includes(job.status)) {
-            if (scanPoller.current) clearInterval(scanPoller.current);
-            scanPoller.current = null;
-            if (job.status === 'completed' || job.status === 'partial') {
-              const { results } = await recapApi.getSavedRecaps();
-              const map: Record<number, RecapStats> = {};
-              results.forEach((r) => (map[r.year] = r));
-              setLiveRecaps(map);
-            }
-          }
-        } catch {
-          // Temporary connectivity interruption; polling can recover.
-        }
-      }, 2500);
+      startScanPolling(jobId);
     } catch (error) {
       setAppError((error as Error).message || 'Не удалось начать анализ.');
       setScreen('connect');
@@ -193,6 +220,8 @@ export default function App() {
           availableYears={availableYears}
           onSelectYear={setSelectedYear}
           onStartConnect={() => setScreen('connect')}
+          hasSavedRecap={Boolean(currentStats)}
+          onOpenSavedRecap={() => openResults('stories')}
           onOpenDemoStories={() => {
             setDemoMode(true);
             setScreen('stories');
