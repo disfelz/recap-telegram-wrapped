@@ -34,7 +34,7 @@ export const ConnectScreen:React.FC<Props>=({demoMode,onAuthorized,onBack})=>{
   const loadingRef=useRef(false);
 
   useEffect(()=>{onAuthorizedRef.current=onAuthorized;},[onAuthorized]);
-  useEffect(()=>()=>{activeRef.current=false;requestRef.current++;},[]);
+  useEffect(()=>{activeRef.current=true;return()=>{activeRef.current=false;requestRef.current++;};},[]);
 
   const finish=useCallback((id:string)=>{
     if(completedRef.current)return;
@@ -56,7 +56,7 @@ export const ConnectScreen:React.FC<Props>=({demoMode,onAuthorized,onBack})=>{
       setAuthId(result.authId);
       const fromApi=Date.parse(result.expiresAt);
       // QR-rotation is capped at 30 seconds even if the server token lives longer.
-      setExpiresAt(Math.min(Number.isFinite(fromApi)?fromApi:Date.now()+30000,Date.now()+30000));
+      setExpiresAt(Math.max(Date.now()+5000,Math.min(Number.isFinite(fromApi)?fromApi:Date.now()+30000,Date.now()+30000)));
       setTtl(30);
       setStatus('Ожидаем подтверждения в Telegram');
     }catch(e){
