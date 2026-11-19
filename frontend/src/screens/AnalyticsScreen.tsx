@@ -54,6 +54,7 @@ export const AnalyticsScreen:React.FC<Props>=({
     setExportSelection({format,action});
   }
   return <main className="screen ref-analytics">
+    <div className="v2-top-fade-scrim" aria-hidden="true" />
     <header className="ref-analytics-head">
       <div><h1>Аналитика</h1><p>Только твои отправленные сообщения</p></div>
       <div className="ref-year-switch">

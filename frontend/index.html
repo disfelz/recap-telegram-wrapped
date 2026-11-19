@@ -16,6 +16,17 @@
       rel="stylesheet"
     />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      (function () {
+        var app = window.Telegram && window.Telegram.WebApp;
+        if (!app) return;
+        try { app.ready(); } catch (e) {}
+        try { app.expand(); } catch (e) {}
+        try { if (app.requestFullscreen) app.requestFullscreen(); } catch (e) {}
+        try { if (app.disableVerticalSwipes) app.disableVerticalSwipes(); } catch (e) {}
+        try { if (app.setHeaderColor) app.setHeaderColor('#09090F'); } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

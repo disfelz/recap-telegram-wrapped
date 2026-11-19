@@ -297,3 +297,15 @@ html, body, #root { min-height: 100dvh; }
 @media(prefers-reduced-motion:reduce) {
   .v2-agree-attention { animation: none; }
 }
+
+/* Fade content beneath the Telegram fullscreen system controls. */
+.v2-app .v2-top-fade-scrim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--app-safe-top, 0px) + 18px);
+  pointer-events: none;
+  z-index: 35;
+  background: linear-gradient(180deg, #09090F 55%, rgba(9,9,15,0) 100%);
+}

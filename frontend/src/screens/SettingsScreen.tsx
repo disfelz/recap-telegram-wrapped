@@ -45,6 +45,7 @@ export const SettingsScreen:React.FC<Props>=({
   }
 
   return <main className="screen flagship-settings">
+    <div className="v2-top-fade-scrim" aria-hidden="true" />
     <header className="flagship-settings-head"><span className="flagship-eyebrow">RECAP / КОНТРОЛЬ</span>
       <h1>Настройки<br/><em>и приватность.</em></h1>
       <p>Ты управляешь тем, что RECAP анализирует, показывает и сохраняет.</p>

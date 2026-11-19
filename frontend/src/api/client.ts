@@ -8,7 +8,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const initData = getTelegramWebApp()?.initData || '';
   const response = await fetch(API_BASE.replace(/\/$/, '') + path, {
     ...init,
-    headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': initData, ...init.headers },
+    headers: { ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), 'X-Telegram-Init-Data': initData, ...init.headers },
     cache: 'no-store',
   });
   if (!response.ok) {
@@ -44,5 +44,12 @@ export const recapApi = {
   unpauseScan: (jobId: string) => post<{resumed: boolean}>('/api/scan/unpause',{jobId}),
   updateSettings: (timezone: string, hideChatNames: boolean) =>
     apiFetch<{ok: boolean}>('/api/settings', {method:'PUT',body:JSON.stringify({timezone,hideChatNames})}),
+  sendExport: (file: File, format: 'story' | 'square', year: number) => {
+    const form = new FormData();
+    form.set('image', file, file.name);
+    form.set('format', format);
+    form.set('year', String(year));
+    return apiFetch<{ok:boolean}>('/api/export/send', {method:'POST',body:form});
+  },
   deleteAllData: () => apiFetch<{deleted: boolean}>('/api/data',{method:'DELETE'}),
 };

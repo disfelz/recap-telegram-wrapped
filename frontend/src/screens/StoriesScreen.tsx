@@ -119,6 +119,7 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
   const maxHour=stats.byHour[peakHour];
   const voiceDuration=stats.voiceTotalDurationSec === null ? null : Math.round(stats.voiceTotalDurationSec/60);
   const topPrivate=stats.topPrivateChats[0],topGroup=stats.topGroupChats[0];
+  const activeDaysLabel=pluralRu(stats.activeDays,['активный день','активных дня','активных дней']);
   const slides=[
     {title:stats.totalMessages?'Ты не молчал!':'Твой год начинается здесь',sub:'Все сообщения, которые ты отправил за год.',number:stats.totalMessages,label:pluralRu(stats.totalMessages,['сообщение','сообщения','сообщений'])},
     {title:maxMonth? 'Твой самый громкий месяц':'Без месячных рекордов',sub:maxMonth?MONTHS[peakMonth]+' был особенно активным.':'Отправленных сообщений за год пока нет.',number:maxMonth,label:pluralRu(maxMonth,['сообщение','сообщения','сообщений'])+' за месяц'},
@@ -129,7 +130,7 @@ export const StoriesScreen:React.FC<Props>=({stats,hideChatNames,onToggleHideNam
     {title:'И не только текст',sub:'Фото, видео, стикеры и GIF — всё по метаданным.',number:stats.photoCount+stats.videoCount+stats.stickerAndGifCount,label:'медиафайлов и стикеров'},
     {title:'Главные переписки',sub:'Рейтинг только по твоим отправленным сообщениям.',number:(topPrivate?.sentMessages||0),label:pluralRu(topPrivate?.sentMessages||0,['сообщение','сообщения','сообщений'])+' в самом активном личном чате'},
     {title:stats.longestStreakDays?'Без пауз!':'Без длинных серий',sub:stats.longestStreakRange?stats.longestStreakRange.start+' — '+stats.longestStreakRange.end:'Серия считается по дням с исходящими сообщениями.',number:stats.longestStreakDays,label:pluralRu(stats.longestStreakDays,['день подряд','дня подряд','дней подряд'])},
-    {title:'Твой вайб года',sub:stats.persona.subtitle,number:stats.activeDays,label:pluralRu(stats.activeDays,['активный день','активных дня','активных дней'])+' с сообщениями'},
+    {title:'Твой вайб года',sub:stats.persona.subtitle,number:stats.activeDays,label:activeDaysLabel+' с сообщениями'},
     {title:'Этот год — твой',sub:'И это только твои настоящие цифры.',number:stats.totalMessages,label:''},
   ];
   const next=()=>{haptic('light');if(index>=slides.length-1)onClose();else setIndex(v=>v+1);};

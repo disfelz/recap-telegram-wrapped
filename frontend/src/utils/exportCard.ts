@@ -22,7 +22,7 @@ function fitText(ctx:CanvasRenderingContext2D,text:string,maxWidth:number,starti
   return size;
 }
 
-export async function renderRecapCardPng(stats:RecapStats,format:CardFormat,hideChatNames=true):Promise<Blob>{
+async function renderRecapCardCanvas(stats:RecapStats,format:CardFormat,hideChatNames=true):Promise<HTMLCanvasElement>{
   // Export never includes contacts or Telegram IDs, even after names are revealed in the UI.
   void hideChatNames;
   await document.fonts?.ready;
@@ -76,18 +76,20 @@ export async function renderRecapCardPng(stats:RecapStats,format:CardFormat,hide
   ctx.fillStyle='#f8f6ff';ctx.font='700 91px "Space Grotesk",sans-serif';
   ctx.fillText(fmt(stats.totalMessages),x,cardY+230);
 
-  const top=cardY+262,chipGap=18,chipW=(cardW-74-chipGap)/2,chipH=111;
+  const top=cardY+262,chipGap=12,chipW=(cardW-74-chipGap*2)/3,chipH=111;
   const peakMonth=MONTHS[stats.byMonth.indexOf(Math.max(...stats.byMonth))]||'—';
   const boxes=[
     {label:'ПИКОВЫЙ МЕСЯЦ',value:peakMonth},
-    {label:'АКТИВНОСТЬ И СЕРИЯ',value:fmt(stats.activeDays)+' '+pluralRu(stats.activeDays,['день','дня','дней'])+' · '+stats.longestStreakDays+' '+pluralRu(stats.longestStreakDays,['день','дня','дней'])},
+    {label:'АКТИВНОСТЬ',value:fmt(stats.activeDays)+' '+pluralRu(stats.activeDays,['активный день','активных дня','активных дней'])},
+    {label:'ЛУЧШАЯ СЕРИЯ',value:fmt(stats.longestStreakDays)+' '+pluralRu(stats.longestStreakDays,['день','дня','дней'])},
   ];
   boxes.forEach((box,i)=>{
     const bx=x+i*(chipW+chipGap);
     rounded(ctx,bx,top,chipW,chipH,22);ctx.fillStyle='rgba(7,7,20,.55)';ctx.fill();
     ctx.fillStyle='#8985a3';ctx.font='700 16px "Manrope",sans-serif';ctx.fillText(box.label,bx+19,top+37);
-    ctx.fillStyle='#b6a6ff';ctx.font='700 28px "Manrope",sans-serif';
-    ctx.fillText(box.value,bx+19,top+77,chipW-37);
+    const size=fitText(ctx,box.value,chipW-32,28,18);
+    ctx.fillStyle='#b6a6ff';ctx.font='700 '+size+'px "Manrope",sans-serif';
+    ctx.fillText(box.value,bx+16,top+77,chipW-32);
   });
 
   const personaY=cardY+389;
@@ -105,12 +107,60 @@ export async function renderRecapCardPng(stats:RecapStats,format:CardFormat,hide
   }else{
     ctx.fillText('Только реальные исходящие сообщения',72,foot);
   }
-  ctx.fillStyle='#78748d';ctx.font='500 21px "Manrope",sans-serif';
+  if(format==='story'){
+    const gridTop=1350,gap=18,tileW=(cardW-gap)/2,tileH=139;
+    const counters=[
+      {label:'ГОЛОСОВЫЕ',value:stats.voiceCount},
+      {label:'КРУЖКИ',value:stats.videoNoteCount},
+      {label:'ФОТО И ВИДЕО',value:stats.photoCount+stats.videoCount},
+      {label:'СТИКЕРЫ И GIF',value:stats.stickerAndGifCount},
+    ];
+    counters.forEach((item,i)=>{
+      const bx=cardX+(i%2)*(tileW+gap),by=gridTop+Math.floor(i/2)*(tileH+gap);
+      rounded(ctx,bx,by,tileW,tileH,23);
+      ctx.fillStyle='rgba(25,22,46,.91)';ctx.fill();
+      ctx.strokeStyle='rgba(169,150,255,.20)';ctx.lineWidth=1.5;ctx.stroke();
+      ctx.fillStyle='#aea6d0';ctx.font='700 19px "Manrope",sans-serif';
+      ctx.fillText(item.label,bx+24,by+43);
+      ctx.fillStyle='#f4efff';ctx.font='700 47px "Space Grotesk",sans-serif';
+      ctx.fillText(fmt(item.value),bx+24,by+107,tileW-48);
+    });
+    const hour=stats.byHour.indexOf(Math.max(...stats.byHour));
+    const peak=stats.totalMessages>0 && stats.byHour[hour]>0
+      ? String(hour).padStart(2,'0')+':00–'+String((hour+1)%24).padStart(2,'0')+':00' : '—';
+    rounded(ctx,cardX,1690,cardW,91,22);
+    ctx.fillStyle='rgba(169,150,255,.11)';ctx.fill();
+    ctx.strokeStyle='rgba(169,150,255,.25)';ctx.stroke();
+    ctx.fillStyle='#afa5d1';ctx.font='700 19px "Manrope",sans-serif';
+    ctx.fillText('ПИКОВЫЙ ЧАС',cardX+25,1725);
+    ctx.fillStyle='#dfd5ff';ctx.font='700 35px "Space Grotesk",sans-serif';
+    ctx.fillText(peak,cardX+25,1764);
+    ctx.fillStyle='#a9a3bd';ctx.font='500 19px "Manrope",sans-serif';
+    ctx.textAlign='right';ctx.fillText('Часовой пояс: '+stats.timezone,cardX+cardW-25,1758,440);
+    ctx.textAlign='left';
+  }
+  ctx.fillStyle='#bdb6d1';ctx.font='600 22px "Manrope",sans-serif';
   ctx.fillText('Без имён собеседников и личных ID',72,h-91);
 
-  return await new Promise<Blob>((resolve,reject)=>{
-    canvas.toBlob((b)=>b?resolve(b):reject(new Error('Не удалось сформировать PNG')),'image/png');
+  return canvas;
+}
+
+export async function renderRecapCardPng(stats:RecapStats,format:CardFormat,hideChatNames=true):Promise<Blob>{
+  const canvas=await renderRecapCardCanvas(stats,format,hideChatNames);
+  return new Promise<Blob>((resolve,reject)=>{
+    canvas.toBlob((blob)=>blob?resolve(blob):reject(new Error('Не удалось сформировать PNG')),'image/png');
   });
+}
+
+/** Data URL renders in Telegram mobile WebView, unlike blob: URL. */
+export async function renderRecapCardPreview(stats:RecapStats,format:CardFormat,hideChatNames=true):
+  Promise<{dataUrl:string;blob:Blob}>{
+  const canvas=await renderRecapCardCanvas(stats,format,hideChatNames);
+  const dataUrl=canvas.toDataURL('image/png');
+  const blob=await new Promise<Blob>((resolve,reject)=>{
+    canvas.toBlob((result)=>result?resolve(result):reject(new Error('Не удалось сформировать PNG')),'image/png');
+  });
+  return {dataUrl,blob};
 }
 
 export async function downloadOrShareCard(

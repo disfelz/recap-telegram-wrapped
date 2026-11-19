@@ -237,8 +237,8 @@ body{background:#09090f}
 .recap-export-preview{display:block;object-fit:contain;max-width:100%;width:auto;min-height:0;max-height:min(57dvh,570px);margin:0 auto;border-radius:13px;border:1px solid rgba(169,150,255,.18);-webkit-touch-callout:default;touch-action:manipulation;user-select:auto;-webkit-user-select:auto}
 .recap-export-loading{display:grid;place-items:center;min-height:210px;color:#a99fbb;font-size:13px;text-align:center}
 .recap-export-hint{color:#b7accb;font-size:11px;line-height:1.5;text-align:center;margin:0}
-.recap-export-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.recap-export-actions .btn{min-height:45px;font-size:11px;line-height:1.25;padding:9px;display:flex;align-items:center;justify-content:center;gap:7px}
+.recap-export-actions{display:grid;grid-template-columns:1fr;gap:8px}
+.recap-export-actions .btn{min-height:45px;font-size:12px;line-height:1.25;padding:9px;display:flex;align-items:center;justify-content:center;gap:7px}
 .recap-export-actions button:disabled{opacity:.45}
 .recap-export-notice{margin:0;font-size:11px;line-height:1.45;color:#ffd99c}
 .recap-empty-analytics{min-height:calc(100dvh - 90px)}

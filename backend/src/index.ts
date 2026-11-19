@@ -206,6 +206,70 @@ export default {
         return jsonResponse({ error: 'Invalid Telegram initData signature' }, 401, corsOrigin);
       }
 
+      if (url.pathname === '/api/export/send' && request.method === 'POST') {
+        // Signed, time-limited Telegram initData has already been verified above.
+        const maxPngSize = 5 * 1024 * 1024;
+        const contentLength = Number(request.headers.get('Content-Length') || 0);
+        if (contentLength > maxPngSize + 65536) {
+          return jsonResponse({ error: 'Размер PNG не должен превышать 5 МБ' }, 413, corsOrigin);
+        }
+        if (!request.headers.get('Content-Type')?.toLowerCase().startsWith('multipart/form-data;')) {
+          return jsonResponse({ error: 'Ожидается multipart/form-data' }, 415, corsOrigin);
+        }
+        let form: FormData;
+        try {
+          form = await request.formData();
+        } catch {
+          return jsonResponse({ error: 'Не удалось прочитать PNG' }, 400, corsOrigin);
+        }
+        const image = form.get('image');
+        const yearRaw = form.get('year');
+        const format = form.get('format');
+        const year = typeof yearRaw === 'string' ? Number(yearRaw) : NaN;
+        if (!Number.isInteger(year) || year < 2013 || year > new Date().getUTCFullYear() ||
+            (format !== 'story' && format !== 'square')) {
+          return jsonResponse({ error: 'Некорректный год или формат открытки' }, 400, corsOrigin);
+        }
+        if (!(image instanceof File) || image.size === 0 || image.size > maxPngSize) {
+          return jsonResponse({ error: 'Нужен PNG размером до 5 МБ' }, 413, corsOrigin);
+        }
+        const bytes = new Uint8Array(await image.arrayBuffer());
+        const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+        if (bytes.length < 24 || !pngSignature.every((byte, index) => bytes[index] === byte) ||
+            String.fromCharCode(...bytes.slice(12, 16)) !== 'IHDR') {
+          return jsonResponse({ error: 'Файл не является корректным PNG' }, 400, corsOrigin);
+        }
+        const view = new DataView(bytes.buffer);
+        if (view.getUint32(16) !== 1080 || view.getUint32(20) !== (format === 'story' ? 1920 : 1080)) {
+          return jsonResponse({ error: 'Неверный размер PNG для выбранного формата' }, 400, corsOrigin);
+        }
+        const saved = await env.DB.prepare(
+          'SELECT 1 AS found FROM recap_results WHERE telegram_user_id = ? AND year = ?'
+        ).bind(user.id, year).first<{ found: number }>();
+        if (!saved) {
+          return jsonResponse({ error: 'Нет сохранённой статистики за этот год' }, 404, corsOrigin);
+        }
+        const upload = new FormData();
+        upload.set('chat_id', String(user.id));
+        upload.set('caption', `Твой RECAP за ${year} год`);
+        upload.set('photo', new Blob([bytes], { type: 'image/png' }), `RECAP-${year}-${format}.png`);
+        try {
+          const tgResponse = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendPhoto`, {
+            method: 'POST', body: upload, signal: AbortSignal.timeout(20000),
+          });
+          const result = await tgResponse.json().catch(() => null) as {ok?:boolean;description?:string}|null;
+          if (!tgResponse.ok || !result?.ok) {
+            console.warn('Telegram PNG delivery failed', tgResponse.status, result?.description);
+            return jsonResponse({
+              error: 'Не удалось отправить открытку. Открой чат с ботом, нажми Start и попробуй снова.'
+            }, 502, corsOrigin);
+          }
+        } catch {
+          return jsonResponse({ error: 'Telegram временно недоступен. Попробуй ещё раз.' }, 502, corsOrigin);
+        }
+        return jsonResponse({ ok: true }, 200, corsOrigin);
+      }
+
       if (url.pathname === '/api/me' && request.method === 'GET') {
         const [recentJob, recaps, settings] = await Promise.all([
           env.DB.prepare(
