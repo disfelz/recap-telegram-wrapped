@@ -12,8 +12,8 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     cache: 'no-store',
   });
   if (!response.ok) {
-    const error = await response.json().catch(() => ({})) as {error?: string};
-    throw new Error(error.error || 'Ошибка API (' + response.status + ')');
+    const error = await response.json().catch(() => ({})) as {error?: string;detail?: string};
+    throw new Error(error.error || error.detail || 'Ошибка API (' + response.status + ')');
   }
   return response.json() as Promise<T>;
 }
