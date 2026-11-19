@@ -236,7 +236,7 @@ export default function App(){
       onSelectYear={handleYearChange}
       onStartConnect={()=>{setResumeJobId(null);if(demoMode)exitDemoToConnect();else setScreen('connect');}}
       hasSavedRecap={Boolean(recaps[selectedYear])}
-      onOpenSavedRecap={()=>setScreen('hold')}
+      onOpenSavedRecap={()=>{if(demoMode){setDemoMode(false);setScreen('boot');}else setScreen('hold');}}
       onOpenDemoStories={openDemo}
       demoEnabled={true}
     />}
