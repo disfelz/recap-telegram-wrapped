@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 import hashlib
 import json
 import logging
@@ -458,35 +459,54 @@ class RecapAnalyzer:
         self.checkpoint_every = checkpoint_every_n_messages
         self._last_progress_at = 0.0
         self._progress_interval_sec = 5.0
+        self._progress_lock = asyncio.Lock()
+        self._current_status = "quick_preview"
+        self._current_stage = "quick_preview"
+        self._current_flood_wait_until: Optional[str] = None
 
     async def _emit_progress(
         self,
         cp: ScanCheckpoint,
-        status: str,
-        stage: str,
+        status: Optional[str],
+        stage: Optional[str],
         flood_wait_until: Optional[str] = None,
     ) -> None:
         if not self.progress_cb:
             return
-        processed = sum(1 for d in cp.dialogs.values() if d.completed or d.failed)
-        self._last_progress_at = time.monotonic()
-        try:
-            await self.progress_cb({
-                "jobId": cp.job_id,
-                "telegramUserId": cp.telegram_user_id,
-                "year": cp.year,
-                "timezone": cp.timezone,
-                "status": status,
-                "stage": stage,
-                "processedDialogs": processed,
-                "totalEligibleDialogs": len(cp.dialogs),
-                "outgoingFound": cp.total_messages,
-                "floodWaitUntil": flood_wait_until,
-            })
-        except Exception as exc:
-            # A progress-reporting outage must not corrupt the statistics or mark a dialog failed.
-            # The final completion callback is separately verified and retried by the server.
-            logger.warning("Progress delivery failed: error_type=%s", type(exc).__name__)
+        # Heartbeat and state transitions must reach the Worker in the same order.
+        # A stale heartbeat must not undo a manual pause or Telegram FloodWait.
+        async with self._progress_lock:
+            if status is not None:
+                self._current_status = status
+                self._current_stage = stage or self._current_stage
+                self._current_flood_wait_until = flood_wait_until
+            processed = sum(1 for d in cp.dialogs.values() if d.completed or d.failed)
+            self._last_progress_at = time.monotonic()
+            try:
+                await self.progress_cb({
+                    "jobId": cp.job_id,
+                    "telegramUserId": cp.telegram_user_id,
+                    "year": cp.year,
+                    "timezone": cp.timezone,
+                    "status": self._current_status,
+                    "stage": self._current_stage,
+                    "processedDialogs": processed,
+                    "totalEligibleDialogs": len(cp.dialogs),
+                    "outgoingFound": cp.total_messages,
+                    "floodWaitUntil": self._current_flood_wait_until,
+                })
+            except Exception as exc:
+                # Reporting failure must not corrupt statistics or mark a dialog failed.
+                logger.warning("Progress delivery failed: error_type=%s", type(exc).__name__)
+
+    async def _progress_heartbeat(self, cp: ScanCheckpoint) -> None:
+        # Continue reporting ACTUAL counters when Telegram takes several seconds
+        # to return one page or the dialog list; never fabricate a percentage.
+        while not self.cancel_event.is_set():
+            await asyncio.sleep(self._progress_interval_sec)
+            if self.cancel_event.is_set():
+                return
+            await self._emit_progress(cp, None, None)
 
     async def _wait_if_paused(self, cp: ScanCheckpoint, stage: str) -> None:
         if self.resume_event.is_set():
@@ -570,96 +590,103 @@ class RecapAnalyzer:
                 timezone=timezone_name,
             )
 
-        dialogs = await self._call_with_flood_wait(cp, "quick_preview", self.source.list_dialogs)
-        entity_map: Dict[int, Any] = {}
-
-        for d in dialogs:
-            eligible, chat_type, _reason = classify_dialog(d, my_id)
-            if not eligible or chat_type is None:
-                if d.id not in cp.dialogs:
-                    cp.skipped_dialogs += 1
-                continue
-
-            dialog_last_dt = getattr(d, "date", None)
-            if dialog_last_dt is not None:
-                if dialog_last_dt.tzinfo is None:
-                    dialog_last_dt = dialog_last_dt.replace(tzinfo=timezone.utc)
-                if dialog_last_dt < start_utc:
+        heartbeat_task = asyncio.create_task(self._progress_heartbeat(cp))
+        try:
+            await self._emit_progress(cp, "quick_preview", "quick_preview")
+            dialogs = await self._call_with_flood_wait(cp, "quick_preview", self.source.list_dialogs)
+            entity_map: Dict[int, Any] = {}
+    
+            for d in dialogs:
+                eligible, chat_type, _reason = classify_dialog(d, my_id)
+                if not eligible or chat_type is None:
                     if d.id not in cp.dialogs:
                         cp.skipped_dialogs += 1
                     continue
-
-            entity_map[d.id] = d.entity
-            if d.id not in cp.dialogs:
-                cp.dialogs[d.id] = DialogCheckpoint(
-                    dialog_id=d.id,
-                    chat_type=chat_type,
-                    title=("Личный диалог" if chat_type == "private" else "Групповой чат") + f" №{len(cp.dialogs) + 1}",
-                )
-
-        if self.store:
-            self.store.save(cp)
-        await self._emit_progress(cp, "quick_preview", "quick_preview")
-
-        interrupted = False
-        await self._emit_progress(cp, "scanning", "full_scan")
-
-        for dialog_id, dcp in cp.dialogs.items():
-            if not self.resume_event.is_set():
-                try:
-                    await self._wait_if_paused(cp, "full_scan")
-                except asyncio.CancelledError:
+    
+                dialog_last_dt = getattr(d, "date", None)
+                if dialog_last_dt is not None:
+                    if dialog_last_dt.tzinfo is None:
+                        dialog_last_dt = dialog_last_dt.replace(tzinfo=timezone.utc)
+                    if dialog_last_dt < start_utc:
+                        if d.id not in cp.dialogs:
+                            cp.skipped_dialogs += 1
+                        continue
+    
+                entity_map[d.id] = d.entity
+                if d.id not in cp.dialogs:
+                    cp.dialogs[d.id] = DialogCheckpoint(
+                        dialog_id=d.id,
+                        chat_type=chat_type,
+                        title=("Личный диалог" if chat_type == "private" else "Групповой чат") + f" №{len(cp.dialogs) + 1}",
+                    )
+    
+            if self.store:
+                self.store.save(cp)
+            await self._emit_progress(cp, "quick_preview", "quick_preview")
+    
+            interrupted = False
+            await self._emit_progress(cp, "scanning", "full_scan")
+    
+            for dialog_id, dcp in cp.dialogs.items():
+                if not self.resume_event.is_set():
+                    try:
+                        await self._wait_if_paused(cp, "full_scan")
+                    except asyncio.CancelledError:
+                        interrupted = True
+                        break
+                if dcp.completed or dcp.failed:
+                    continue
+                if self.cancel_event.is_set():
                     interrupted = True
                     break
-            if dcp.completed or dcp.failed:
-                continue
-            if self.cancel_event.is_set():
-                interrupted = True
-                break
-
-            entity = entity_map.get(dialog_id)
-            if entity is None:
-                dcp.failed = True
-                continue
-
-            try:
-                await self._scan_single_dialog(
-                    cp=cp,
-                    dcp=dcp,
-                    entity=entity,
-                    my_id=my_id,
-                    start_utc=start_utc,
-                    end_utc=end_utc,
-                    tz=tz,
-                    on_after_message=on_after_message,
-                )
-            except asyncio.CancelledError:
-                interrupted = True
-                if self.store:
-                    self.store.save(cp)
-                break
-            except (ChannelPrivateError, ChatAdminRequiredError, UserDeactivatedBanError, PermissionError) as exc:
-                dcp.failed = True
-                logger.warning("Dialog unavailable: chat_type=%s error_type=%s", dcp.chat_type, type(exc).__name__)
-                if self.store:
-                    self.store.save(cp)
-            except Exception as exc:
-                dcp.failed = True
-                # Do not log dialog identifiers, names, message text or exception strings.
-                logger.warning("Dialog scan failed: chat_type=%s error_type=%s", dcp.chat_type, type(exc).__name__)
-                if self.store:
-                    self.store.save(cp)
-
-            await self._emit_progress(cp, "scanning", "full_scan")
-
-        verify_aggregates_integrity(cp)
-
-        failed_count = sum(1 for d in cp.dialogs.values() if d.failed)
-        incomplete_count = sum(1 for d in cp.dialogs.values() if not d.completed)
-        completion_status = "partial" if (interrupted or failed_count > 0 or incomplete_count > 0) else "completed"
-
-        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        return self._build_result_payload(cp, completion_status, elapsed_ms)
+    
+                entity = entity_map.get(dialog_id)
+                if entity is None:
+                    dcp.failed = True
+                    continue
+    
+                try:
+                    await self._scan_single_dialog(
+                        cp=cp,
+                        dcp=dcp,
+                        entity=entity,
+                        my_id=my_id,
+                        start_utc=start_utc,
+                        end_utc=end_utc,
+                        tz=tz,
+                        on_after_message=on_after_message,
+                    )
+                except asyncio.CancelledError:
+                    interrupted = True
+                    if self.store:
+                        self.store.save(cp)
+                    break
+                except (ChannelPrivateError, ChatAdminRequiredError, UserDeactivatedBanError, PermissionError) as exc:
+                    dcp.failed = True
+                    logger.warning("Dialog unavailable: chat_type=%s error_type=%s", dcp.chat_type, type(exc).__name__)
+                    if self.store:
+                        self.store.save(cp)
+                except Exception as exc:
+                    dcp.failed = True
+                    # Do not log dialog identifiers, names, message text or exception strings.
+                    logger.warning("Dialog scan failed: chat_type=%s error_type=%s", dcp.chat_type, type(exc).__name__)
+                    if self.store:
+                        self.store.save(cp)
+    
+                await self._emit_progress(cp, "scanning", "full_scan")
+    
+            verify_aggregates_integrity(cp)
+    
+            failed_count = sum(1 for d in cp.dialogs.values() if d.failed)
+            incomplete_count = sum(1 for d in cp.dialogs.values() if not d.completed)
+            completion_status = "partial" if (interrupted or failed_count > 0 or incomplete_count > 0) else "completed"
+    
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            return self._build_result_payload(cp, completion_status, elapsed_ms)
+        finally:
+            heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat_task
 
     async def _scan_single_dialog(
         self,

@@ -30,7 +30,8 @@ export const ScanScreen: React.FC<Props> = ({ progress, onPause, onUnpause, onCa
   const deadline = progress.floodWaitUntil ? Date.parse(progress.floodWaitUntil) : NaN;
   const remaining = Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
   const updatedAt = progress.updatedAt ? Date.parse(progress.updatedAt) : NaN;
-  const connectionFresh = !Number.isFinite(updatedAt) || now - updatedAt < 30000;
+  const lastSeenSeconds = Number.isFinite(updatedAt) ? Math.max(0, Math.floor((now - updatedAt) / 1000)) : null;
+  const connectionFresh = lastSeenSeconds !== null && lastSeenSeconds < 30000;
   const stageTwo = progress.stage === 'full_scan';
   const stageOneComplete = stageTwo || isDone;
   const countdown = remaining === null ? null :
@@ -50,7 +51,10 @@ export const ScanScreen: React.FC<Props> = ({ progress, onPause, onUnpause, onCa
     isFailed ? (progress.errorMessage || 'Во время анализа возникла ошибка. Можно продолжить с сохранённого места.') :
     progress.status === 'queued' || progress.status === 'auth_pending' ? 'Подключаем Telegram и подготавливаем диалоги…' :
     !stageTwo ? 'Быстрый обзор диалогов. Подготавливаем точный подсчёт.' :
-    'Считаем твои исходящие сообщения. Данные обновляются по мере обработки чатов.';
+    total > 0
+      ? 'Проверяем чат ' + Math.min(total, processed + 1) + ' из ' + total +
+        '. Найденные исходящие обновляются по мере проверки сообщений.'
+      : 'Получаем список диалогов перед точным подсчётом сообщений.';
 
   const runAction = async (action: () => void | Promise<void>) => {
     if (pending) return;
@@ -68,7 +72,9 @@ export const ScanScreen: React.FC<Props> = ({ progress, onPause, onUnpause, onCa
 
     <div className="recap-scan-badges" role="status" aria-live="polite">
       <span className={'recap-scan-badge recap-scan-badge-connection' + (!connectionFresh || !active ? ' muted' : '')}>
-        <Radio size={15}/>{isPaused ? 'Подключение на паузе' : active && connectionFresh ? 'MTProto подключён' : active ? 'Проверяем подключение' : 'Сессия завершена'}
+        <Radio size={15}/>{isPaused ? 'Подключение на паузе' : !active ? 'Сессия завершена' :
+          lastSeenSeconds === null ? 'Ожидаем подключение' :
+          connectionFresh ? 'MTProto подключён' : 'Проверяем подключение'}
       </span>
       <span className="recap-scan-badge recap-scan-badge-soft">
         {isDone ? progress.status === 'partial' ? 'Частичная статистика' : 'Готово' :
@@ -102,6 +108,11 @@ export const ScanScreen: React.FC<Props> = ({ progress, onPause, onUnpause, onCa
         </div>
       </div>
       <p className="recap-scan-progress-caption" role="status">{detail}</p>
+      {active && <p className="recap-scan-heartbeat" aria-live="off">
+        {lastSeenSeconds === null ? 'Ожидаем первые данные сканера' :
+          connectionFresh ? 'Обновлено ' + lastSeenSeconds + ' с назад • сервер работает' :
+          'Нет новых данных ' + lastSeenSeconds + ' с • соединение проверяется'}
+      </p>}
     </section>
 
     <div className="recap-scan-stages" aria-label="Этапы анализа">

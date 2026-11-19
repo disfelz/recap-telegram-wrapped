@@ -498,3 +498,82 @@ async def test_manual_pause_saves_cursor_and_resumes_without_duplicates(tmp_path
     assert result["completionStatus"] == "completed"
     assert result["totalMessages"] == 80
     assert "paused_user" in updates
+
+
+@pytest.mark.asyncio
+async def test_live_heartbeat_reports_counts_inside_each_chat_sequentially(tmp_path: Path):
+    """Counters must advance while a slow Telegram page is pending, without overlapping chats."""
+    me = 100
+    dt = datetime(2026, 11, 1, 10, 0, tzinfo=timezone.utc)
+    first, second = 311, 312
+    messages = {
+        first: [FakeMessage(i, dt + timedelta(minutes=i), True, me) for i in range(1, 3)],
+        second: [FakeMessage(i, dt + timedelta(minutes=i), True, me) for i in range(1, 3)],
+    }
+
+    class SlowSource(FakeTelegramSource):
+        def __init__(self):
+            super().__init__(me, [
+                make_dialog(first, last_dt=dt + timedelta(days=1)),
+                make_dialog(second, last_dt=dt + timedelta(days=1)),
+            ], messages)
+            self.pages: List[int] = []
+
+        async def fetch_history_page(self, entity, *, limit, offset_id, offset_date):
+            self.pages.append(entity.id)
+            await asyncio.sleep(0.035)
+            return await super().fetch_history_page(
+                entity, limit=limit, offset_id=offset_id, offset_date=offset_date
+            )
+
+    source = SlowSource()
+    observed = []
+
+    async def capture(payload: dict) -> None:
+        observed.append(dict(payload))
+
+    analyzer = RecapAnalyzer(source, CheckpointStore(str(tmp_path)),
+                             progress_cb=capture, page_limit=2)
+    analyzer._progress_interval_sec = 0.01
+    result = await analyzer.run(job_id="heartbeat", year=2026, timezone_name="UTC")
+
+    assert result["completionStatus"] == "completed"
+    assert result["totalMessages"] == 4
+    assert source.pages == [first, first, second, second]
+    assert any(p["outgoingFound"] == 2 and p["processedDialogs"] == 0 for p in observed)
+    assert observed[-1]["outgoingFound"] == 4
+    assert observed[-1]["processedDialogs"] == 2
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_preserves_manual_pause_status(tmp_path: Path):
+    """A timer tick must never resume an explicitly user-paused job."""
+    me, peer = 100, 313
+    dt = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
+    messages = {peer: [FakeMessage(i, dt + timedelta(minutes=i), True, me) for i in range(1, 3)]}
+    class SlowSource(FakeTelegramSource):
+        async def fetch_history_page(self, entity, *, limit, offset_id, offset_date):
+            await asyncio.sleep(0.04)
+            return await super().fetch_history_page(entity, limit=limit,
+                                                     offset_id=offset_id, offset_date=offset_date)
+
+    resume_event = asyncio.Event()
+    resume_event.clear()
+    cancel_event = asyncio.Event()
+    events = []
+
+    async def capture(payload: dict) -> None:
+        events.append(dict(payload))
+
+    source = SlowSource(me, [make_dialog(peer, last_dt=dt + timedelta(days=1))], messages)
+    analyzer = RecapAnalyzer(source, CheckpointStore(str(tmp_path)),
+                             progress_cb=capture, cancel_event=cancel_event,
+                             resume_event=resume_event, page_limit=2)
+    analyzer._progress_interval_sec = 0.01
+    task = asyncio.create_task(analyzer.run(job_id="manual-heartbeat", year=2026, timezone_name="UTC"))
+    await asyncio.sleep(0.08)
+    assert any(x["status"] == "paused_user" for x in events)
+    assert events[-1]["status"] == "paused_user"
+    resume_event.set()
+    result = await asyncio.wait_for(task, timeout=2)
+    assert result["totalMessages"] == 2
