@@ -1,221 +1,130 @@
 import type { RecapStats } from '../../../shared/types';
 
-const MONTHS_RU = [
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
-];
-
 export type CardFormat = 'story' | 'square';
+export type ExportAction = 'download' | 'share';
 
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-) {
+const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const fmt = (x:number) => x.toLocaleString('ru-RU');
+
+function rounded(ctx:CanvasRenderingContext2D,x:number,y:number,w:number,h:number,r:number) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  ctx.roundRect(x,y,w,h,r);
 }
 
-export async function renderRecapCardPng(
-  stats: RecapStats,
-  format: CardFormat,
-  hideChatNames = true
-): Promise<Blob> {
-  const width = 1080;
-  const height = format === 'story' ? 1920 : 1080;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
-
-  // Background
-  ctx.fillStyle = '#09090F';
-  ctx.fillRect(0, 0, width, height);
-
-  // Ambient gradients
-  const g1 = ctx.createRadialGradient(220, 260, 40, 220, 260, 560);
-  g1.addColorStop(0, 'rgba(169, 150, 255, 0.34)');
-  g1.addColorStop(1, 'rgba(9, 9, 15, 0)');
-  ctx.fillStyle = g1;
-  ctx.fillRect(0, 0, width, height);
-
-  const g2 = ctx.createRadialGradient(width - 180, height - 260, 40, width - 180, height - 260, 540);
-  g2.addColorStop(0, 'rgba(133, 184, 255, 0.28)');
-  g2.addColorStop(1, 'rgba(9, 9, 15, 0)');
-  ctx.fillStyle = g2;
-  ctx.fillRect(0, 0, width, height);
-
-  const pad = 76;
-
-  // Header
-  ctx.fillStyle = '#A996FF';
-  ctx.font = '700 32px "Space Grotesk", sans-serif';
-  ctx.fillText(`RECAP · TELEGRAM ${stats.year}`, pad, format === 'story' ? 140 : 108);
-
-  if (stats.completionStatus === 'partial') {
-    ctx.fillStyle = '#FFD17A';
-    ctx.font = '600 24px "Manrope", sans-serif';
-    ctx.fillText('ЧАСТИЧНАЯ СТАТИСТИКА', pad, format === 'story' ? 182 : 146);
+function fitText(ctx:CanvasRenderingContext2D,text:string,maxWidth:number,startingSize:number,minSize=25) {
+  let size=startingSize;
+  while(size>minSize) {
+    ctx.font='700 '+size+'px "Space Grotesk",sans-serif';
+    if(ctx.measureText(text).width<=maxWidth)break;
+    size-=2;
   }
+  return size;
+}
 
-  // Hero Total Messages
-  const heroY = format === 'story' ? 370 : 255;
-  ctx.fillStyle = '#F7F5FF';
-  ctx.font = '700 132px "Space Grotesk", sans-serif';
-  ctx.fillText(stats.totalMessages.toLocaleString('ru-RU'), pad, heroY);
+export async function renderRecapCardPng(stats:RecapStats,format:CardFormat,hideChatNames=true):Promise<Blob>{
+  // Export never includes contacts or Telegram IDs, even after names are revealed in the UI.
+  void hideChatNames;
+  await document.fonts?.ready;
+  const w=1080,h=format==='story'?1920:1080;
+  const canvas=document.createElement('canvas');
+  canvas.width=w;canvas.height=h;
+  const ctx=canvas.getContext('2d');
+  if(!ctx)throw new Error('Canvas не поддерживается');
 
-  ctx.fillStyle = '#9693AB';
-  ctx.font = '500 34px "Manrope", sans-serif';
-  ctx.fillText('отправленных сообщений за год', pad, heroY + 54);
+  ctx.fillStyle='#09090f';ctx.fillRect(0,0,w,h);
+  const glow=ctx.createRadialGradient(720,0,45,540,130,1250);
+  glow.addColorStop(0,'rgba(117,89,200,.36)');
+  glow.addColorStop(.52,'rgba(33,29,67,.12)');
+  glow.addColorStop(1,'rgba(9,9,15,0)');
+  ctx.fillStyle=glow;ctx.fillRect(0,0,w,h);
+  const cool=ctx.createRadialGradient(450,h,40,530,h,950);
+  cool.addColorStop(0,'rgba(72,115,168,.23)');cool.addColorStop(1,'rgba(9,9,15,0)');
+  ctx.fillStyle=cool;ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='rgba(155,143,207,.075)';ctx.lineWidth=1;
+  for(let x=0;x<w;x+=54){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+  for(let y=0;y<h;y+=54){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
 
-  // Key metrics grid
-  const peakMonthIdx = stats.byMonth.indexOf(Math.max(...stats.byMonth));
-  const peakHourIdx = stats.byHour.indexOf(Math.max(...stats.byHour));
-  const metrics = [
-    { label: 'АКТИВНЫХ ДНЕЙ', value: `${stats.activeDays}` },
-    { label: 'ЛУЧШАЯ СЕРИЯ', value: `${stats.longestStreakDays} дн.` },
-    { label: 'ПИКОВЫЙ МЕСЯЦ', value: MONTHS_RU[peakMonthIdx] || '—' },
-    { label: 'ЛЮБИМЫЙ ЧАС', value: `${String(peakHourIdx).padStart(2, '0')}:00` },
+  const cardX=72,cardW=w-144,cardH=568,cardY=format==='story'?610:252;
+  const topLabelY=format==='story'?190:116;
+  ctx.fillStyle='#b3a7f1';ctx.font='700 25px "Manrope",sans-serif';
+  ctx.fillText('RECAP  /  ПЕРСОНАЛЬНАЯ ХРОНИКА',72,topLabelY);
+  ctx.font='700 100px "Space Grotesk",sans-serif';ctx.fillStyle='#e4e3ff';
+  ctx.fillText(String(stats.year),67,topLabelY+112);
+  ctx.fillStyle='#aaa5c0';ctx.font='400 29px "Manrope",sans-serif';
+  ctx.fillText('Твой год. Твои сообщения. Твоя история.',72,topLabelY+173);
+
+  ctx.shadowColor='rgba(106,82,199,.27)';ctx.shadowBlur=70;
+  rounded(ctx,cardX,cardY,cardW,cardH,39);
+  const panel=ctx.createLinearGradient(100,cardY,975,cardY+cardH);
+  panel.addColorStop(0,'#201a39');panel.addColorStop(.45,'#171428');panel.addColorStop(1,'#0f1024');
+  ctx.fillStyle=panel;ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.lineWidth=2;ctx.strokeStyle='rgba(170,150,255,.48)';ctx.stroke();
+
+  ctx.beginPath();ctx.moveTo(670,cardY+6);ctx.lineTo(890,cardY+6);ctx.lineTo(605,cardY+cardH-8);
+  ctx.lineTo(385,cardY+cardH-8);ctx.closePath();ctx.fillStyle='rgba(255,255,255,.025)';ctx.fill();
+
+  const x=cardX+37;
+  ctx.strokeStyle='#a996ff';ctx.lineWidth=4;ctx.beginPath();ctx.arc(x+14,cardY+48,10,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle='#e5e2f6';ctx.font='700 26px "Manrope",sans-serif';ctx.fillText('RECAP',x+40,cardY+57);
+  rounded(ctx,cardX+cardW-150,cardY+28,110,40,20);ctx.fillStyle='rgba(169,150,255,.18)';ctx.fill();
+  ctx.fillStyle='#dbd2ff';ctx.font='700 21px "Manrope",sans-serif';ctx.fillText(String(stats.year),cardX+cardW-127,cardY+55);
+
+  ctx.fillStyle='#a49fba';ctx.font='700 20px "Manrope",sans-serif';
+  ctx.fillText('ОТПРАВЛЕНО СООБЩЕНИЙ',x,cardY+132);
+  ctx.fillStyle='#f8f6ff';ctx.font='700 91px "Space Grotesk",sans-serif';
+  ctx.fillText(fmt(stats.totalMessages),x,cardY+230);
+
+  const top=cardY+262,chipGap=18,chipW=(cardW-74-chipGap)/2,chipH=111;
+  const peakMonth=MONTHS[stats.byMonth.indexOf(Math.max(...stats.byMonth))]||'—';
+  const boxes=[
+    {label:'ПИКОВЫЙ МЕСЯЦ',value:peakMonth},
+    {label:'АКТИВНЫХ ДНЕЙ',value:fmt(stats.activeDays)+' · серия '+stats.longestStreakDays+'д'},
   ];
-
-  const gridTop = format === 'story' ? 540 : 370;
-  const cardW = (width - pad * 2 - 28) / 2;
-  const cardH = format === 'story' ? 176 : 138;
-
-  metrics.forEach((m, idx) => {
-    const col = idx % 2;
-    const row = Math.floor(idx / 2);
-    const x = pad + col * (cardW + 28);
-    const y = gridTop + row * (cardH + 24);
-
-    roundRect(ctx, x, y, cardW, cardH, 28);
-    ctx.fillStyle = 'rgba(21, 19, 34, 0.84)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(169, 150, 255, 0.24)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.fillStyle = '#9693AB';
-    ctx.font = '600 22px "Manrope", sans-serif';
-    ctx.fillText(m.label, x + 32, y + 52);
-
-    ctx.fillStyle = '#F7F5FF';
-    ctx.font = '700 48px "Space Grotesk", sans-serif';
-    ctx.fillText(m.value, x + 32, y + (format === 'story' ? 124 : 108));
+  boxes.forEach((box,i)=>{
+    const bx=x+i*(chipW+chipGap);
+    rounded(ctx,bx,top,chipW,chipH,22);ctx.fillStyle='rgba(7,7,20,.55)';ctx.fill();
+    ctx.fillStyle='#8985a3';ctx.font='700 16px "Manrope",sans-serif';ctx.fillText(box.label,bx+19,top+37);
+    ctx.fillStyle='#b6a6ff';ctx.font='700 28px "Manrope",sans-serif';
+    ctx.fillText(box.value,bx+19,top+77,chipW-37);
   });
 
-  // Persona Card
-  const personaTop = gridTop + cardH * 2 + 64;
-  const personaH = format === 'story' ? 270 : 185;
-  roundRect(ctx, pad, personaTop, width - pad * 2, personaH, 32);
-  const pg = ctx.createLinearGradient(pad, personaTop, width - pad, personaTop + personaH);
-  pg.addColorStop(0, 'rgba(169, 150, 255, 0.22)');
-  pg.addColorStop(1, 'rgba(133, 184, 255, 0.16)');
-  ctx.fillStyle = pg;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(169, 150, 255, 0.42)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  const personaY=cardY+389;
+  rounded(ctx,x,personaY,cardW-74,123,22);ctx.fillStyle='#121126';ctx.fill();
+  ctx.strokeStyle='rgba(169,150,255,.3)';ctx.lineWidth=1;ctx.stroke();
+  ctx.fillStyle='#9690af';ctx.font='700 18px "Manrope",sans-serif';ctx.fillText('ХАРАКТЕР ОБЩЕНИЯ',x+21,personaY+35);
+  const personaSize=fitText(ctx,stats.persona.title,cardW-115,34,24);
+  ctx.fillStyle='#f2edff';ctx.font='700 '+personaSize+'px "Space Grotesk",sans-serif';
+  ctx.fillText(stats.persona.title,x+21,personaY+83,cardW-115);
 
-  ctx.fillStyle = '#85B8FF';
-  ctx.font = '700 22px "Manrope", sans-serif';
-  ctx.fillText('ХАРАКТЕР ОБЩЕНИЯ', pad + 36, personaTop + 56);
-
-  ctx.fillStyle = '#F7F5FF';
-  ctx.font = '700 50px "Space Grotesk", sans-serif';
-  ctx.fillText(stats.persona.title, pad + 36, personaTop + 124);
-
-  ctx.fillStyle = '#D7D3EC';
-  ctx.font = '500 26px "Manrope", sans-serif';
-  ctx.fillText(stats.persona.subtitle.slice(0, 56), pad + 36, personaTop + 170);
-
-  // Story-only extra media & privacy-safe summary
-  if (format === 'story') {
-    const mediaTop = personaTop + personaH + 44;
-    roundRect(ctx, pad, mediaTop, width - pad * 2, 260, 32);
-    ctx.fillStyle = 'rgba(21, 19, 34, 0.84)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(169, 150, 255, 0.22)';
-    ctx.stroke();
-
-    ctx.fillStyle = '#9693AB';
-    ctx.font = '700 22px "Manrope", sans-serif';
-    ctx.fillText('МЕДИА И ФОРМАТЫ', pad + 36, mediaTop + 54);
-
-    const mediaItems = [
-      `Голосовые: ${stats.voiceCount.toLocaleString('ru-RU')}`,
-      `Кружки: ${stats.videoNoteCount.toLocaleString('ru-RU')}`,
-      `Фото: ${stats.photoCount.toLocaleString('ru-RU')}`,
-      `Стикеры и GIF: ${stats.stickerAndGifCount.toLocaleString('ru-RU')}`,
-    ];
-    ctx.fillStyle = '#F7F5FF';
-    ctx.font = '600 32px "Manrope", sans-serif';
-    mediaItems.forEach((line, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      ctx.fillText(line, pad + 36 + col * 430, mediaTop + 125 + row * 68);
-    });
-
-    const topPeer = stats.topPrivateChats[0];
-    if (topPeer) {
-      ctx.fillStyle = '#9693AB';
-      ctx.font = '500 24px "Manrope", sans-serif';
-      const label = hideChatNames ? 'Личный чат #1 (имя скрыто)' : topPeer.displayLabel;
-      ctx.fillText(
-        `Главный диалог: ${label} · ${topPeer.sentMessages.toLocaleString('ru-RU')} сообщ.`,
-        pad,
-        mediaTop + 320
-      );
-    }
+  const foot=cardY+cardH+73;
+  ctx.fillStyle='#bcb6d0';ctx.font='500 23px "Manrope",sans-serif';
+  if(stats.completionStatus==='partial'){
+    ctx.fillStyle='#f0d093';ctx.fillText('ЧАСТИЧНАЯ СТАТИСТИКА · не все чаты завершены',72,foot);
+  }else{
+    ctx.fillText('Только реальные исходящие сообщения',72,foot);
   }
+  ctx.fillStyle='#78748d';ctx.font='500 21px "Manrope",sans-serif';
+  ctx.fillText('Без имён собеседников и личных ID',72,h-91);
 
-  // Footer
-  ctx.fillStyle = '#9693AB';
-  ctx.font = '500 24px "Manrope", sans-serif';
-  ctx.fillText('Твой год. Твои сообщения. Твоя история.', pad, height - 64);
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('Не удалось сформировать PNG'));
-    }, 'image/png');
+  return await new Promise<Blob>((resolve,reject)=>{
+    canvas.toBlob((b)=>b?resolve(b):reject(new Error('Не удалось сформировать PNG')),'image/png');
   });
 }
 
 export async function downloadOrShareCard(
-  stats: RecapStats,
-  format: CardFormat,
-  hideChatNames: boolean
-): Promise<void> {
-  const blob = await renderRecapCardPng(stats, format, hideChatNames);
-  const fileName = `RECAP-${stats.year}-${format === 'story' ? '1080x1920' : '1080x1080'}.png`;
-  const file = new File([blob], fileName, { type: 'image/png' });
-
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({
-        title: `Мой RECAP ${stats.year}`,
-        text: `${stats.totalMessages.toLocaleString('ru-RU')} отправленных сообщений в Telegram за ${stats.year} год.`,
-        files: [file],
-      });
-      return;
-    } catch {
-      // Пользователь отменил share sheet — переходим к скачиванию
-    }
+  stats:RecapStats,format:CardFormat,hideChatNames:boolean,action:ExportAction='download'
+):Promise<void>{
+  const blob=await renderRecapCardPng(stats,format,hideChatNames);
+  const name='RECAP-'+stats.year+'-'+(format==='story'?'1080x1920':'1080x1080')+'.png';
+  const file=new File([blob],name,{type:'image/png'});
+  if(action==='share'&&typeof navigator.share==='function'&&
+     typeof navigator.canShare==='function'&&navigator.canShare({files:[file]})){
+    try{await navigator.share({title:'Мой RECAP '+stats.year,files:[file]});return;}
+    catch(e){if((e as Error).name==='AbortError')return;}
   }
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
 }
