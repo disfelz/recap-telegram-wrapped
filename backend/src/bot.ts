@@ -50,14 +50,16 @@ function openRecapKeyboard(appUrl: string, path = '') {
 export async function handleBotUpdate(update: TelegramUpdate, env: BotEnv): Promise<void> {
   const msg = update.message;
   if (!msg?.from) return;
+  const rawPhone = msg.contact?.phone_number.replace(/[\s()-]/g, '') || '';
+  const normalizedPhone = /^\d/.test(rawPhone) ? `+${rawPhone}` : rawPhone;
   if (msg.contact && msg.chat.id === msg.from.id &&
       msg.contact.user_id === msg.from.id &&
-      /^\+?\d{7,15}$/.test(msg.contact.phone_number.replace(/[\s()-]/g, ''))) {
+      /^\+\d{7,15}$/.test(normalizedPhone)) {
     await env.DB.prepare(
       `INSERT INTO phone_contact_requests (telegram_user_id, phone, expires_at)
        VALUES (?, ?, ?) ON CONFLICT(telegram_user_id)
        DO UPDATE SET phone = excluded.phone, expires_at = excluded.expires_at`
-    ).bind(msg.from.id, msg.contact.phone_number, new Date(Date.now() + 120000).toISOString()).run();
+    ).bind(msg.from.id, normalizedPhone, new Date(Date.now() + 120000).toISOString()).run();
     return;
   }
   if (!msg.text) return;
