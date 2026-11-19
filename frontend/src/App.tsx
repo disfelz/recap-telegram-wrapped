@@ -405,7 +405,7 @@ export default function App() {
             )}
           </section>
         </main>
-      )
+      )}
       {screen === 'settings' && (
         <SettingsScreen
           timezone={timezone}
