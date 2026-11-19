@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
   outgoing_found INTEGER NOT NULL DEFAULT 0,
   flood_wait_until TEXT,
   error_message TEXT,
+  notified_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -40,4 +41,10 @@ CREATE TABLE IF NOT EXISTS recap_results (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (telegram_user_id, year)
+);
+
+CREATE TABLE IF NOT EXISTS phone_contact_requests (
+  telegram_user_id INTEGER PRIMARY KEY,
+  phone TEXT NOT NULL,
+  expires_at TEXT NOT NULL
 );

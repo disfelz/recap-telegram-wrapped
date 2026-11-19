@@ -30,7 +30,7 @@
    - Если результат неполный (прерывание или недоступный чат), статус обязан быть 'partial' («Частичная статистика»), а не 'completed'.
 5. Безопасность:
    - Никогда не проси меня вставлять BOT_TOKEN, API_HASH, пароли 2FA или коды Telegram прямо в чат — давай инструкции, куда безопасно вписать их в GitHub Secrets / Cloudflare / Render.
-   - Не пиши в интерфейсе и текстах, что MTProto-сессия «только для чтения» — честно объясняй широкие права и гарантированное завершение через auth.logOut.
+   - Не пиши в интерфейсе и текстах, что MTProto-сессия «только для чтения» — честно объясняй широкие права, сохранение зашифрованной MTProto-сессии и LogOut только по явному запросу пользователя.
    - Не сохраняй тексты сообщений, коды, пароли и открытые session strings в БД и логах.
 6. Я веду разработку и деплой с Android-смартфона и планшета (без ПК), поэтому все шаги давай под браузер Android, GitHub Web / Codespaces, Cloudflare Dashboard и Render/Railway.
 7. Всегда проверяй изменения прогоном 12 автотестов: PYTHONPATH=. pytest tests/test_analyzer.py -v.
@@ -63,7 +63,7 @@
 | `backend/schema.sql` | Схема Cloudflare D1 с `UNIQUE INDEX` против параллельных сканов одного аккаунта |
 | `scanner/app/analyzer.py` | Новый быстрый двухэтапный алгоритм анализа + чекпоинты + проверка целостности сумм |
 | `scanner/app/auth.py` | MTProto QR-вход, вход по телефону/2FA, сверка `me.id == initData.user.id`, `LogOutRequest` |
-| `scanner/app/crypto.py` | AES-256-GCM шифрование временных `StringSession` с AAD привязкой к `telegram_user_id` |
+| `scanner/app/crypto.py` | AES-256-GCM шифрование сохранённых `StringSession` с AAD привязкой к `telegram_user_id` |
 | `scanner/app/config.py` | Настройки из env + фильтр маскирования секретов/телефонов/кодов в логах |
 | `scanner/app/server.py` | FastAPI-сервер, `asyncio.Semaphore` для ограничения параллельности, фоновые задачи |
 | `tests/test_analyzer.py` | 12 автоматических тестов + замер API-запросов и времени выполнения |
@@ -80,4 +80,4 @@
    - Render / Railway (`scanner`): `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `SCANNER_SHARED_SECRET`, `SESSION_ENCRYPTION_KEY_B64`.
    - Cloudflare Worker (`backend`): `BOT_TOKEN`, `BOT_WEBHOOK_SECRET`, `SCANNER_SHARED_SECRET`, плюс переменные `APP_URL`, `SCANNER_BASE_URL`.
    - GitHub Actions: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, переменная `API_BASE_URL`.
-4. **Реальный тест MTProto**: после развёртывания протестировать QR-вход и вход с одного устройства на собственном аккаунте, проверить в «Устройствах» Telegram, что временная сессия **RECAP Ephemeral Analyzer** автоматически исчезает сразу после завершения сканирования или отмены.
+4. **Реальный тест MTProto**: после развёртывания протестировать QR-вход и вход с одного устройства на собственном аккаунте, проверить в «Устройствах» Telegram, что сессия **RECAP Analyzer** остаётся авторизованной после подсчёта и исчезает только после ручного удаления.

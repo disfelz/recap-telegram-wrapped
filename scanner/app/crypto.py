@@ -4,7 +4,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 class EphemeralSessionCipher:
-    """Шифрует временные StringSession с помощью AES-256-GCM."""
+    """Шифрует MTProto StringSession с помощью AES-256-GCM с привязкой к ID."""
 
     def __init__(self, key_b64: str) -> None:
         raw_key = base64.b64decode(key_b64)

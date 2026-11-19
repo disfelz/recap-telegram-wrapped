@@ -12,6 +12,7 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.auth import LogOutRequest
 
 from .crypto import EphemeralSessionCipher
+from .session_store import EncryptedSessionStore
 
 
 @dataclass
@@ -30,10 +31,11 @@ class PendingAuth:
 class MTProtoAuthManager:
     """Управляет временными MTProto-авторизациями без хранения секретов в открытом виде."""
 
-    def __init__(self, api_id: int, api_hash: str, cipher: EphemeralSessionCipher) -> None:
+    def __init__(self, api_id: int, api_hash: str, cipher: EphemeralSessionCipher, store: EncryptedSessionStore) -> None:
         self._api_id = api_id
         self._api_hash = api_hash
         self._cipher = cipher
+        self._store = store
         self._sessions: Dict[str, PendingAuth] = {}
 
     def _new_client(self, session_str: str = "") -> TelegramClient:
@@ -41,7 +43,7 @@ class MTProtoAuthManager:
             StringSession(session_str),
             self._api_id,
             self._api_hash,
-            device_model="RECAP Ephemeral Analyzer",
+            device_model="RECAP Analyzer",
             system_version="Linux",
             app_version="1.0",
             lang_code="ru",
@@ -129,7 +131,7 @@ class MTProtoAuthManager:
                 return {"status": "invalid_request"}
 
             await self._finalize_auth(state)
-            return {"status": "authorized", "authId": auth_id}
+            return {"status": state.status, "authId": auth_id}
         except SessionPasswordNeededError:
             state.status = "needs_2fa"
             return {"status": "needs_2fa", "authId": auth_id}
@@ -142,43 +144,58 @@ class MTProtoAuthManager:
             return
 
         session_str = state.client.session.save()
+        # A new login supersedes the old saved Telegram authorization.
+        await self._revoke_saved_session(state.telegram_user_id)
+        self._store.save(state.telegram_user_id, session_str)
         state.encrypted_session = self._cipher.encrypt(session_str, state.telegram_user_id)
         state.status = "authorized"
         await state.client.disconnect()
 
-    def build_client_for_scan(self, telegram_user_id: int, auth_id: str) -> TelegramClient:
-        state = self._sessions.get(auth_id)
-        if (
-            not state
-            or state.telegram_user_id != telegram_user_id
-            or state.status != "authorized"
-            or not state.encrypted_session
-        ):
-            raise PermissionError("Authorized MTProto session not found")
+    def has_saved_session(self, telegram_user_id: int) -> bool:
+        return self._store.has_session(telegram_user_id)
 
-        session_str = self._cipher.decrypt(state.encrypted_session, telegram_user_id)
+    def build_client_for_scan(self, telegram_user_id: int, auth_id: str = "") -> TelegramClient:
+        state = self._sessions.get(auth_id) if auth_id else None
+        if auth_id and state and state.telegram_user_id != telegram_user_id:
+            raise PermissionError("Authorization belongs to another user")
+        if auth_id and state and state.status != "authorized":
+            raise PermissionError("Authorization is not completed")
+        session_str = self._store.load(telegram_user_id)
+        if not session_str:
+            raise PermissionError("Saved Telegram authorization is missing")
         return self._new_client(session_str)
 
+    async def _revoke_saved_session(self, telegram_user_id: int) -> None:
+        session = self._store.load(telegram_user_id)
+        if not session:
+            return
+        client = self._new_client(session)
+        try:
+            await client.connect()
+            # If already revoked in Telegram, deleting the local credential is safe.
+            if await client.is_user_authorized():
+                await client(LogOutRequest())
+            self._store.delete(telegram_user_id)
+        finally:
+            await client.disconnect()
+
     async def revoke_all_for_user(self, telegram_user_id: int) -> None:
+        # Keep the encrypted credential if the Telegram LogOut call fails:
+        # the caller must not report successful deletion in that case.
+        await self._revoke_saved_session(telegram_user_id)
         to_remove = [k for k, v in self._sessions.items() if v.telegram_user_id == telegram_user_id]
         for auth_id in to_remove:
             state = self._sessions.pop(auth_id)
-            if state.encrypted_session:
-                client = self._new_client(
-                    self._cipher.decrypt(state.encrypted_session, telegram_user_id)
-                )
-                await self.terminate_client_session(client)
-            else:
-                await state.client.disconnect()
+            # Pending login clients are not yet authorized; disconnect the transport.
+            await state.client.disconnect()
+            state.encrypted_session = None
 
     @staticmethod
     async def terminate_client_session(client: TelegramClient) -> None:
-        """Принудительно завершает временную MTProto-сессию на серверах Telegram."""
+        """Explicit LogOut only; never call after ordinary analysis or cancellation."""
         try:
             if not client.is_connected():
                 await client.connect()
             await client(LogOutRequest())
-        except Exception:
-            pass
         finally:
             await client.disconnect()

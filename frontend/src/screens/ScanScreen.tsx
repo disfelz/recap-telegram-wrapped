@@ -1,169 +1,102 @@
-import React, { useEffect, useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, Pause, Play, Radio, RotateCcw, ShieldCheck, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { CheckCircle2, Clock3, X } from 'lucide-react';
 import type { ScanProgressPayload } from '../../../shared/types';
 import { haptic } from '../utils/telegram';
 
 interface Props {
-  progress: ScanProgressPayload;
-  onPause: () => void | Promise<void>;
-  onUnpause: () => void | Promise<void>;
-  onCancel: () => void | Promise<void>;
-  onResume: () => void;
-  onOpenResults: () => void;
+  progress:ScanProgressPayload;
+  onCancel:()=>void|Promise<void>;
+  onRetry:()=>void;
+  onOpenResults:()=>void;
 }
-
-export const ScanScreen: React.FC<Props> = ({ progress, onPause, onUnpause, onCancel, onResume, onOpenResults }) => {
-  const reduceMotion = useReducedMotion();
-  const [now, setNow] = useState(() => Date.now());
-  const [pending, setPending] = useState(false);
-  const isFlood = progress.status === 'paused_flood_wait';
-  const isPaused = progress.status === 'paused_user';
-  const isDone = progress.status === 'completed' || progress.status === 'partial';
-  const isCancelled = progress.status === 'cancelled';
-  const isFailed = progress.status === 'failed';
-  const active = !isDone && !isCancelled && !isFailed;
-  const total = Math.max(0, progress.totalEligibleDialogs);
-  const processed = Math.min(total || Number.MAX_SAFE_INTEGER, Math.max(0, progress.processedDialogs));
-  const pct = total > 0 ? Math.min(100, Math.round(processed / total * 100)) : isDone ? 100 : 0;
-  const circumference = 2 * Math.PI * 79;
-  const deadline = progress.floodWaitUntil ? Date.parse(progress.floodWaitUntil) : NaN;
-  const remaining = Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
-  const updatedAt = progress.updatedAt ? Date.parse(progress.updatedAt) : NaN;
-  const lastSeenSeconds = Number.isFinite(updatedAt) ? Math.max(0, Math.floor((now - updatedAt) / 1000)) : null;
-  const connectionFresh = lastSeenSeconds !== null && lastSeenSeconds < 30000;
-  const stageTwo = progress.stage === 'full_scan';
-  const stageOneComplete = stageTwo || isDone;
-  const countdown = remaining === null ? null :
-    String(Math.floor(remaining / 60)).padStart(2, '0') + ':' + String(remaining % 60).padStart(2, '0');
-
-  useEffect(() => {
-    if (!active) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [active]);
-
-  const detail = isPaused ? 'Сканирование поставлено на паузу. Прогресс сохранён — можно продолжить с этого места.' :
-    isFlood ? 'Telegram временно ограничил запросы. Подсчёт продолжится автоматически' + (countdown ? ' через ' + countdown : '') + '.' :
-    progress.status === 'completed' ? 'Готово! Все доступные диалоги обработаны.' :
-    progress.status === 'partial' ? 'Анализ завершён не полностью. Покажем только проверенную статистику.' :
-    isCancelled ? 'Сканирование отменено. Уже собранный прогресс можно использовать при новом входе.' :
-    isFailed ? (progress.errorMessage || 'Во время анализа возникла ошибка. Можно продолжить с сохранённого места.') :
-    progress.status === 'queued' || progress.status === 'auth_pending' ? 'Подключаем Telegram и подготавливаем диалоги…' :
-    !stageTwo ? 'Быстрый обзор диалогов. Подготавливаем точный подсчёт.' :
-    total > 0
-      ? 'Проверяем чат ' + Math.min(total, processed + 1) + ' из ' + total +
-        '. Найденные исходящие обновляются по мере проверки сообщений.'
-      : 'Получаем список диалогов перед точным подсчётом сообщений.';
-
-  const runAction = async (action: () => void | Promise<void>) => {
-    if (pending) return;
-    haptic('medium');
-    setPending(true);
-    try { await action(); } finally { setPending(false); }
+const fmt=(n:number)=>n.toLocaleString('ru-RU');
+export const ScanScreen:React.FC<Props>=({progress,onCancel,onRetry,onOpenResults})=>{
+  const reduce=useReducedMotion();
+  const [line,setLine]=useState(0);
+  const [now,setNow]=useState(Date.now());
+  const [pending,setPending]=useState(false);
+  const done=progress.status==='completed'||progress.status==='partial';
+  const failed=progress.status==='cancelled'||progress.status==='failed';
+  const flood=progress.status==='paused_flood_wait';
+  const paused=progress.status==='paused_user';
+  const total=Math.max(0,progress.totalEligibleDialogs);
+  const checked=Math.max(0,progress.processedDialogs);
+  const percentage=done?100:total>0?Math.max(0,Math.min(99,Math.round(checked/total*100))):0;
+  const titles=useMemo(()=>{
+    if(failed)return [progress.status==='cancelled'?'Анализ отменён':'Что-то пошло не так'];
+    if(done)return ['Всё готово!'];
+    if(paused)return ['Анализ на паузе','Можешь продолжить в любой момент'];
+    if(flood)return ['Telegram попросил сделать паузу','Продолжим автоматически'];
+    if(percentage<15)return ['Подключаемся и собираем список чатов…','Начинаем считать сообщения'];
+    if(percentage<40)return ['Работаем изо всех сил','Считаем твои сообщения'];
+    if(percentage<75)return ['Нам нужно немного времени','Можешь свернуть — напишем, когда всё будет готово'];
+    return ['Проверяем цифры','Почти готово…'];
+  },[percentage,done,failed,paused,flood,progress.status]);
+  useEffect(()=>{setLine(0);},[percentage<15,percentage<40,percentage<75,done,failed,paused,flood]);
+  useEffect(()=>{
+    if(titles.length<2)return;
+    const timer=setInterval(()=>setLine(n=>(n+1)%titles.length),3600);
+    return()=>clearInterval(timer);
+  },[titles.join('|')]);
+  useEffect(()=>{
+    const timer=setInterval(()=>setNow(Date.now()),1000);
+    return()=>clearInterval(timer);
+  },[]);
+  const deadline=progress.floodWaitUntil ? Date.parse(progress.floodWaitUntil) : NaN;
+  const remaining=Number.isFinite(deadline)?Math.max(0,Math.ceil((deadline-now)/1000)):null;
+  const ring=2*Math.PI*84;
+  const cancel=async()=>{
+    if(pending)return;
+    haptic('medium');setPending(true);
+    try{await onCancel();}finally{setPending(false);}
   };
-
-  return <main className="screen flagship-scan">
-    <header className="flagship-scan-heading">
-      <span className="flagship-eyebrow">RECAP / {progress.year}</span>
-      <h1>Анализ активности</h1>
-      <p>Твоя история собирается из реальных данных Telegram.</p>
+  return <main className="v2-scan">
+    <div className="v2-scan-aura" aria-hidden="true"/>
+    <header className="v2-scan-header">
+      <span className="v2-mark">RECAP<span>✳</span></span>
+      <span className="v2-kicker">{progress.year} · Идёт подсчёт</span>
     </header>
-
-    <div className="recap-scan-badges" role="status" aria-live="polite">
-      <span className={'recap-scan-badge recap-scan-badge-connection' + (!connectionFresh || !active ? ' muted' : '')}>
-        <Radio size={15}/>{isPaused ? 'Подключение на паузе' : !active ? 'Сессия завершена' :
-          lastSeenSeconds === null ? 'Ожидаем подключение' :
-          connectionFresh ? 'MTProto подключён' : 'Проверяем подключение'}
-      </span>
-      <span className="recap-scan-badge recap-scan-badge-soft">
-        {isDone ? progress.status === 'partial' ? 'Частичная статистика' : 'Готово' :
-          isPaused ? 'Пауза' : isFlood ? 'Пауза Telegram' : 'Предварительные данные'}
-      </span>
-    </div>
-
-    <section className="recap-scan-progress-card" aria-label="Прогресс анализа">
-      <div className="flagship-scan-radar">
-        <motion.div className="flagship-scan-pulse"
-          animate={reduceMotion || isPaused || isDone ? {} : { scale: [.96, 1.06, .96], opacity: [.13, .30, .13] }}
-          transition={{ repeat: Infinity, duration: 3.8, ease: 'easeInOut' }}/>
-        <svg viewBox="0 0 200 200" role="img" aria-label={'Завершено ' + pct + ' процентов'} className="flagship-scan-ring">
-          <defs>
-            <linearGradient id="recap-scan-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#A996FF"/><stop offset="100%" stopColor="#85B8FF"/>
-            </linearGradient>
-          </defs>
-          <circle cx="100" cy="100" r="89" fill="none" stroke="rgba(169,150,255,.13)" strokeWidth="1"/>
-          <circle cx="100" cy="100" r="79" fill="none" stroke="rgba(169,150,255,.12)" strokeWidth="6"/>
-          <motion.circle cx="100" cy="100" r="79" fill="none" stroke="url(#recap-scan-gradient)" strokeWidth="6"
-            strokeLinecap="round" transform="rotate(-90 100 100)" strokeDasharray={circumference}
-            initial={false} animate={{ strokeDashoffset: circumference * (1 - pct / 100) }}
-            transition={{ duration: reduceMotion ? 0 : .7, ease: 'easeOut' }}/>
-          <circle cx="100" cy="100" r="64" fill="none" stroke="rgba(169,150,255,.13)" strokeWidth="1" strokeDasharray="2 7"/>
-          <circle cx="100" cy="100" r="44" fill="none" stroke="rgba(169,150,255,.16)" strokeWidth="1"/>
+    <section className="v2-scan-main">
+      <div className="v2-scan-ring">
+        <svg viewBox="0 0 220 220" aria-label={'Готово '+percentage+'%'} role="img">
+          <defs><linearGradient id="v2-loading-gradient"><stop stopColor="#85B8FF"/><stop offset="1" stopColor="#A996FF"/></linearGradient></defs>
+          <circle cx="110" cy="110" r="84" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="11"/>
+          <motion.circle cx="110" cy="110" r="84" fill="none" stroke="url(#v2-loading-gradient)"
+            strokeWidth="11" strokeLinecap="round" transform="rotate(-90 110 110)"
+            strokeDasharray={ring} animate={{strokeDashoffset:ring*(1-percentage/100)}}
+            transition={{duration:reduce?0:.85,ease:'easeInOut'}}/>
         </svg>
-        <div className="flagship-scan-radar-value">
-          <strong className="tabular">{pct}%</strong>
-          <span>{progress.year} ГОД</span>
-        </div>
+        <div className="v2-scan-ring-value"><strong>{percentage}<small>%</small></strong><span>ГОТОВО</span></div>
       </div>
-      <p className="recap-scan-progress-caption" role="status">{detail}</p>
-      {active && <p className="recap-scan-heartbeat" aria-live="off">
-        {lastSeenSeconds === null ? 'Ожидаем первые данные сканера' :
-          connectionFresh ? 'Обновлено ' + lastSeenSeconds + ' с назад • сервер работает' :
-          'Нет новых данных ' + lastSeenSeconds + ' с • соединение проверяется'}
+      <h1>Собираем твой<br/>RECAP</h1>
+      <div className="v2-scan-caption" aria-live="polite">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.p key={line+'-'+titles[line]} initial={{opacity:0,y:9}}
+            animate={{opacity:1,y:0}} exit={{opacity:0,y:-9}}
+            transition={{duration:reduce?0:.3}}>{titles[line]}</motion.p>
+        </AnimatePresence>
+      </div>
+      <div className="v2-scan-track"><motion.div
+        animate={{scaleX:percentage/100}} transition={{duration:reduce?0:.75}}
+        style={{transformOrigin:'left'}}/></div>
+      <p className="v2-scan-actual">Проверено чатов: <b>{fmt(checked)}</b>
+        {' из '}<b>{total?fmt(total):'—'}</b>
+        <span> · </span>Найдено сообщений: <b>{fmt(progress.outgoingFound)}</b>
+      </p>
+      {flood&&<p className="v2-scan-flood"><Clock3 size={15}/>
+        Telegram попросил сделать паузу{remaining!==null?' на '+remaining+' сек':''} — ждём и продолжаем.
       </p>}
+      {progress.status==='partial'&&<p className="v2-scan-flood">Не все чаты удалось обработать. Итоги покажем с пометкой.</p>}
     </section>
-
-    <div className="recap-scan-stages" aria-label="Этапы анализа">
-      <div className={'recap-scan-stage ' + (stageOneComplete ? 'completed' : 'current')}>
-        <div className="recap-scan-stage-top"><span>ЭТАП 1</span>{stageOneComplete && <CheckCircle2 size={19}/>}</div>
-        <strong>Быстрый предварительный обзор</strong>
-      </div>
-      <div className={'recap-scan-stage ' + (stageTwo ? 'current' : 'upcoming')}>
-        <div className="recap-scan-stage-top"><span>ЭТАП 2</span>{isDone && <CheckCircle2 size={19}/>}</div>
-        <strong>Точный подсчёт исходящих</strong>
-      </div>
-    </div>
-
-    <div className="flagship-scan-metrics">
-      <div><span>ОБРАБОТАНО ЧАТОВ</span>
-        <strong className="tabular">{progress.processedDialogs.toLocaleString('ru-RU')}<small> / {total || '—'}</small></strong>
-      </div>
-      <div><span>ТВОИХ СООБЩЕНИЙ</span>
-        <strong className="tabular">{progress.outgoingFound.toLocaleString('ru-RU')}</strong>
-      </div>
-    </div>
-
-    {isFlood && <div className="flagship-flood-card">
-      <div className="flagship-flood-title"><Clock3 size={18}/><strong>Telegram ограничил частоту запросов</strong></div>
-      <p>{countdown ? 'Автоматическое возобновление через ' + countdown + '.' : 'Ожидаем снятия ограничения.'} Прогресс сохранён.</p>
-    </div>}
-    {progress.status === 'partial' && <div className="flagship-partial-note"><AlertTriangle size={18}/>
-      <span>Результат неполный. Недоступные диалоги не учитываются.</span></div>}
-    <div className="flagship-scan-actions">
-      {isDone ? <div className="recap-scan-action-primary">
-        <button className="btn btn-primary" onClick={() => { haptic('success'); onOpenResults(); }}>
-          <CheckCircle2 size={17}/> Смотреть RECAP {progress.year}<ArrowRight size={16}/>
-        </button>
-        {progress.status === 'partial' && <button className="btn btn-secondary" onClick={() => { haptic('medium'); onResume(); }}>
-          <RotateCcw size={17}/> Продолжить подсчёт
-        </button>}
-      </div> : isCancelled || isFailed ?
-        <button className="btn btn-primary" onClick={() => { haptic('medium'); onResume(); }}>
-          <RotateCcw size={17}/> Продолжить с сохранённого места
-        </button> :
-        <div className="recap-scan-action-row">
-          <button className="btn recap-scan-pause-btn" disabled={pending}
-            onClick={() => { void runAction(isPaused ? onUnpause : onPause); }}>
-            {isPaused ? <Play size={19}/> : <Pause size={19}/>}
-            {pending ? 'Подождите…' : isPaused ? 'Продолжить' : 'Пауза'}
-          </button>
-          <button className="btn recap-scan-cancel-btn" disabled={pending}
-            onClick={() => { void runAction(onCancel); }}><X size={20}/> Отменить</button>
-        </div>}
-      <p className="flagship-scan-privacy"><ShieldCheck size={14}/>
-        Тексты сообщений не сохраняются. Медиафайлы не скачиваются.</p>
-    </div>
+    <footer className="v2-scan-footer">
+      {done?<button type="button" className="v2-white-btn" onClick={onOpenResults}>
+        <CheckCircle2 size={18}/> Смотреть итоги
+      </button>:failed?<button type="button" className="v2-white-btn" onClick={onRetry}>
+        Повторить анализ
+      </button>:<button type="button" className="v2-scan-cancel" disabled={pending||!progress.jobId}
+        onClick={()=>void cancel()}><X size={18}/>{pending?'Отменяем…':'Отменить'}</button>}
+      <small>Можешь закрыть приложение. Бот напишет, когда всё будет готово.</small>
+    </footer>
   </main>;
 };

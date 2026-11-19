@@ -9,7 +9,8 @@ class ScannerSettings(BaseSettings):
     scanner_shared_secret: str
     session_encryption_key_b64: str
     max_concurrent_scans: int = 4
-    checkpoint_dir: str = "/tmp/recap_checkpoints"
+    checkpoint_dir: str = "/data/recap_checkpoints"
+    session_store_dir: str = "/data/recap_sessions"
 
     class Config:
         env_file = ".env"

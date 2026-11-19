@@ -77,6 +77,14 @@ export interface RecapStats {
   metrics: ScanMetrics;
 }
 
+export interface RecapMe {
+  authorized: boolean;
+  activeJob: ScanProgressPayload | null;
+  availableYears: number[];
+  timezone: string | null;
+  hideChatNames: boolean;
+}
+
 export interface ScanProgressPayload {
   jobId: string;
   year: number;

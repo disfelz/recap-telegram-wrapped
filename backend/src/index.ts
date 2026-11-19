@@ -85,118 +85,113 @@ export default {
       }
 
       const payload = (await request.json()) as {
-        jobId: string;
-        telegramUserId: number;
-        year: number;
-        timezone: string;
-        status: string;
-        stage: string;
-        processedDialogs: number;
-        totalEligibleDialogs: number;
-        outgoingFound: number;
-        floodWaitUntil?: string | null;
-        errorMessage?: string | null;
+        jobId: string; telegramUserId: number; year: number; timezone: string;
+        status: string; stage: string; processedDialogs: number; totalEligibleDialogs: number;
+        outgoingFound: number; floodWaitUntil?: string | null; errorMessage?: string | null;
         stats?: Record<string, unknown> | null;
       };
-
-      // Scanner cannot overwrite another user's report or resurrect a cancelled job.
+      const final = payload.status === 'completed' || payload.status === 'partial';
+      if (!payload.jobId || !Number.isSafeInteger(payload.telegramUserId) ||
+          !Number.isInteger(payload.year) || !['queued', 'auth_pending', 'quick_preview',
+            'scanning', 'paused_flood_wait', 'paused_user', 'completed', 'partial',
+            'cancelled', 'failed'].includes(payload.status) ||
+          (final && (!payload.stats || payload.stats.year !== payload.year ||
+            payload.stats.completionStatus !== payload.status))) {
+        return jsonResponse({ error: 'Invalid scanner callback' }, 400, corsOrigin);
+      }
+      // Strict identity match: a stale scanner must not resurrect a deleted user.
       const expected = await env.DB.prepare(
-        'SELECT telegram_user_id, year, timezone, status FROM scan_jobs WHERE id = ?'
-      ).bind(payload.jobId).first<{ telegram_user_id: number; year: number; timezone: string; status: string }>();
+        'SELECT telegram_user_id, year, timezone, status, notified_at FROM scan_jobs WHERE id = ?'
+      ).bind(payload.jobId).first<{
+        telegram_user_id: number; year: number; timezone: string; status: string; notified_at: string | null;
+      }>();
       if (!expected || expected.telegram_user_id !== payload.telegramUserId ||
           expected.year !== payload.year || expected.timezone !== payload.timezone) {
         return jsonResponse({ error: 'Unknown or mismatched job' }, 409, corsOrigin);
       }
-      if (['cancelled', 'completed', 'failed', 'partial'].includes(expected.status)) {
+      const alreadyFinished = final && expected.status === payload.status;
+      if (['cancelled', 'failed'].includes(expected.status) ||
+          (['completed', 'partial'].includes(expected.status) && !alreadyFinished)) {
         return jsonResponse({ ok: true, ignored: true }, 200, corsOrigin);
       }
-      // A delayed progress callback must not override a manual pause/resume.
       if ((expected.status === 'paused_user' &&
-           ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(payload.status)) ||
+          ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(payload.status)) ||
           (expected.status !== 'paused_user' && payload.status === 'paused_user')) {
         return jsonResponse({ ok: true, ignored: true }, 200, corsOrigin);
       }
-      const now = new Date().toISOString();
-      const updateJob = await env.DB.prepare(
-        `UPDATE scan_jobs
-         SET status = ?, stage = ?, processed_dialogs = ?, total_eligible_dialogs = ?,
-             outgoing_found = ?, flood_wait_until = ?, error_message = ?, updated_at = ?
-         WHERE id = ? AND telegram_user_id = ? AND status NOT IN ('cancelled', 'completed', 'failed', 'partial')`
-      )
-        .bind(
-          payload.status,
-          payload.stage,
-          payload.processedDialogs,
-          payload.totalEligibleDialogs,
-          payload.outgoingFound,
-          payload.floodWaitUntil ?? null,
-          payload.errorMessage ?? null,
-          now,
-          payload.jobId,
-          payload.telegramUserId
-        )
-        .run();
 
-      if (payload.stats && (payload.status === 'completed' || payload.status === 'partial')) {
-        await env.DB.prepare(
-          `INSERT INTO recap_results
-             (telegram_user_id, year, timezone, completion_status, stats_json, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(telegram_user_id, year) DO UPDATE SET
-             timezone = excluded.timezone,
-             completion_status = excluded.completion_status,
-             stats_json = excluded.stats_json,
-             updated_at = excluded.updated_at`
-        )
-          .bind(
-            payload.telegramUserId,
-            payload.year,
-            payload.timezone,
-            payload.status,
-            JSON.stringify(payload.stats),
-            now,
-            now
-          )
-          .run();
+      const now = new Date().toISOString();
+      if (!alreadyFinished) {
+        // D1 batch runs transactionally: the recap is persisted before the
+        // completion status becomes visible to polling clients.
+        const update = env.DB.prepare(
+          `UPDATE scan_jobs SET status = ?, stage = ?, processed_dialogs = ?,
+             total_eligible_dialogs = ?, outgoing_found = ?, flood_wait_until = ?,
+             error_message = ?, updated_at = ?
+           WHERE id = ? AND telegram_user_id = ?
+             AND status NOT IN ('cancelled', 'completed', 'failed', 'partial')`
+        ).bind(payload.status, payload.stage, payload.processedDialogs,
+          payload.totalEligibleDialogs, payload.outgoingFound, payload.floodWaitUntil ?? null,
+          payload.errorMessage ?? null, now, payload.jobId, payload.telegramUserId);
+
+        if (final && payload.stats) {
+          const insert = env.DB.prepare(
+            `INSERT INTO recap_results
+              (telegram_user_id, year, timezone, completion_status, stats_json, created_at, updated_at)
+             SELECT ?, ?, ?, ?, ?, ?, ? FROM scan_jobs
+             WHERE id = ? AND telegram_user_id = ?
+               AND status NOT IN ('cancelled', 'completed', 'failed', 'partial')
+             ON CONFLICT(telegram_user_id, year) DO UPDATE SET
+               timezone = excluded.timezone, completion_status = excluded.completion_status,
+               stats_json = excluded.stats_json, updated_at = excluded.updated_at`
+          ).bind(payload.telegramUserId, payload.year, payload.timezone,
+            payload.status, JSON.stringify(payload.stats), now, now,
+            payload.jobId, payload.telegramUserId);
+          // Insert first with conditional status check, update second in same transaction.
+          await env.DB.batch([insert, update]);
+        } else {
+          await update.run();
+        }
       }
 
-      // Notify the user once after a job reaches a terminal state. The D1 status
-      // transition is guarded above, so a retried callback cannot send duplicates.
-      if (updateJob.meta.changes > 0 &&
-          ['completed', 'partial', 'failed'].includes(payload.status)) {
-        const finished = payload.status === 'completed';
-        const partial = payload.status === 'partial';
-        const message = finished
-          ? `✅ <b>Твой RECAP за ${payload.year} год готов!</b>\n\nТочная статистика собрана. Открывай свои итоги.`
-          : partial
-          ? `📊 <b>RECAP за ${payload.year} год — частичный результат</b>\n\nНе все переписки удалось обработать. Можно посмотреть подтверждённые цифры и затем продолжить анализ.`
-          : `⚠️ <b>Анализ RECAP за ${payload.year} год остановился</b>\n\nОткрой приложение, чтобы проверить статус и повторить попытку.`;
-
-        try {
-          const telegramResponse = await fetch(
-            `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: payload.telegramUserId,
-                text: message,
-                parse_mode: 'HTML',
-                reply_markup: {
-                  inline_keyboard: [[{
-                    text: 'Открыть RECAP',
-                    web_app: { url: `${env.APP_URL}?screen=stories&year=${payload.year}` },
-                  }]],
-                },
-              }),
+      if (final) {
+        // Claim the send exactly once per job with an atomic D1 compare-and-set.
+        // A retried callback can deliver a failed notice without duplicating a
+        // successful one.
+        const claimed = await env.DB.prepare(
+          `UPDATE scan_jobs SET notified_at = ? WHERE id = ?
+           AND telegram_user_id = ? AND status = ? AND notified_at IS NULL`
+        ).bind(now, payload.jobId, payload.telegramUserId, payload.status).run();
+        if (claimed.meta.changes > 0) {
+          const target = new URL(env.APP_URL);
+          target.searchParams.set('screen', 'reveal');
+          target.searchParams.set('year', String(payload.year));
+          const message = payload.status === 'partial'
+            ? `Часть статистики за ${payload.year} год готова — некоторые чаты оказались недоступны, но твои основные итоги уже собраны.`
+            : `Твой RECAP за ${payload.year} год готов! Открывай и смотри, каким был твой год в Telegram.`;
+          try {
+            const response = await fetch(
+              `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
+              { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: payload.telegramUserId,
+                  text: message,
+                  reply_markup: { inline_keyboard: [[{
+                    text: 'Смотреть итоги года', web_app: { url: target.toString() },
+                  }]] },
+                }) }
+            );
+            if (!response.ok) {
+              // Known Telegram rejection: safe to allow a future callback retry.
+              await env.DB.prepare(
+                'UPDATE scan_jobs SET notified_at = NULL WHERE id = ? AND notified_at = ?'
+              ).bind(payload.jobId, now).run();
+              console.warn('Telegram completion notification failed', response.status);
             }
-          );
-          if (!telegramResponse.ok) {
-            console.warn('RECAP completion notice was not delivered', telegramResponse.status);
+          } catch {
+            // Transport ambiguity: avoid a possible duplicate Telegram message.
+            console.warn('Telegram completion notification status unknown');
           }
-        } catch {
-          // Delivery failure must not roll back the completed analysis.
-          console.warn('RECAP completion notice request failed');
         }
       }
 
@@ -207,6 +202,86 @@ export default {
       const user = await requireUser(request, env);
       if (!user) {
         return jsonResponse({ error: 'Invalid Telegram initData signature' }, 401, corsOrigin);
+      }
+
+      if (url.pathname === '/api/me' && request.method === 'GET') {
+        const [recentJob, recaps, settings] = await Promise.all([
+          env.DB.prepare(
+            `SELECT id, year, status, stage, processed_dialogs,
+              total_eligible_dialogs, outgoing_found, flood_wait_until,
+              error_message, updated_at FROM scan_jobs
+             WHERE telegram_user_id = ? AND status IN (
+               'queued','auth_pending','quick_preview','scanning','paused_flood_wait','paused_user'
+             ) ORDER BY created_at DESC LIMIT 1`
+          ).bind(user.id).first<any>(),
+          env.DB.prepare(
+            'SELECT year FROM recap_results WHERE telegram_user_id = ? ORDER BY year DESC'
+          ).bind(user.id).all<{ year: number }>(),
+          env.DB.prepare(
+            'SELECT timezone, hide_chat_names FROM user_settings WHERE telegram_user_id = ?'
+          ).bind(user.id).first<{ timezone: string; hide_chat_names: number }>(),
+        ]);
+        let authorized = false;
+        try {
+          const res = await proxyToScanner(env,
+            `/internal/auth/status?telegram_user_id=${user.id}`, 'GET');
+          if (!res.ok) throw new Error('scanner unavailable');
+          const state = (await res.json()) as { authorized: boolean };
+          authorized = state.authorized;
+        } catch {
+          if (!(recaps.results || []).length && !recentJob) {
+            return jsonResponse({ error: 'Сервис авторизации недоступен' }, 503, corsOrigin);
+          }
+        }
+        return jsonResponse({
+          authorized, availableYears: (recaps.results || []).map((r) => r.year),
+          timezone: settings?.timezone || null,
+          hideChatNames: settings?.hide_chat_names !== 0,
+          activeJob: recentJob ? {
+            jobId: recentJob.id, year: recentJob.year, status: recentJob.status,
+            stage: recentJob.stage, processedDialogs: recentJob.processed_dialogs,
+            totalEligibleDialogs: recentJob.total_eligible_dialogs,
+            outgoingFound: recentJob.outgoing_found,
+            floodWaitUntil: recentJob.flood_wait_until,
+            errorMessage: recentJob.error_message, updatedAt: recentJob.updated_at,
+          } : null,
+        }, 200, corsOrigin);
+      }
+
+      if (url.pathname === '/api/chats/names' && request.method === 'GET') {
+        const year = Number(url.searchParams.get('year'));
+        if (!Number.isInteger(year) || year < 2013 || year > new Date().getUTCFullYear()) {
+          return jsonResponse({ error: 'Invalid year' }, 400, corsOrigin);
+        }
+        const recap = await env.DB.prepare(
+          'SELECT stats_json FROM recap_results WHERE telegram_user_id = ? AND year = ?'
+        ).bind(user.id, year).first<{ stats_json: string }>();
+        if (!recap) return jsonResponse({ error: 'Нет статистики за этот год' }, 404, corsOrigin);
+        const stats = JSON.parse(recap.stats_json) as {
+          topPrivateChats: Array<{chatHash:string}>;
+          topGroupChats: Array<{chatHash:string}>;
+        };
+        const hashes = [...new Set([
+          ...(stats.topPrivateChats || []).map(c => c.chatHash),
+          ...(stats.topGroupChats || []).map(c => c.chatHash),
+        ])].filter(h => /^[0-9a-f]{16}$/.test(h)).slice(0,20);
+        try {
+          return await proxyToScanner(env, '/internal/chats/resolve', 'POST', {
+            telegram_user_id: user.id, chat_hashes: hashes,
+          });
+        } catch {
+          return jsonResponse({ error: 'Не удалось получить названия переписок' }, 503, corsOrigin);
+        }
+      }
+
+      if (url.pathname === '/api/auth/contact/pickup' && request.method === 'GET') {
+        const contact = await env.DB.prepare(
+          'SELECT phone FROM phone_contact_requests WHERE telegram_user_id = ? AND expires_at > ?'
+        ).bind(user.id, new Date().toISOString()).first<{ phone: string }>();
+        if (!contact) return jsonResponse({ phone: null }, 200, corsOrigin);
+        await env.DB.prepare('DELETE FROM phone_contact_requests WHERE telegram_user_id = ?')
+          .bind(user.id).run();
+        return jsonResponse({ phone: contact.phone }, 200, corsOrigin);
       }
 
       if (url.pathname === '/api/recap' && request.method === 'GET') {
@@ -261,7 +336,7 @@ export default {
       }
 
       if (url.pathname === '/api/scan/start' && request.method === 'POST') {
-        const body = (await request.json()) as { year: number; timezone?: string; authId: string };
+        const body = (await request.json()) as { year: number; timezone?: string; authId?: string };
         const year = Number(body.year);
         if (!Number.isInteger(year) || year < 2013 || year > new Date().getUTCFullYear()) {
           return jsonResponse({ error: 'Invalid year' }, 400, corsOrigin);
@@ -273,8 +348,8 @@ export default {
         } catch {
           return jsonResponse({ error: 'Некорректный часовой пояс' }, 400, corsOrigin);
         }
-        if (!body.authId || typeof body.authId !== 'string') {
-          return jsonResponse({ error: 'Отсутствует подтверждённая авторизация' }, 400, corsOrigin);
+        if (body.authId != null && typeof body.authId !== 'string') {
+          return jsonResponse({ error: 'Некорректный идентификатор авторизации' }, 400, corsOrigin);
         }
         // Also guard jobs paused by their owner; older D1 indexes may not yet include paused_user.
         const existing = await env.DB.prepare(
@@ -305,7 +380,7 @@ export default {
           const startRes = await proxyToScanner(env, '/internal/scan/start', 'POST', {
             job_id: jobId,
             telegram_user_id: user.id,
-            auth_id: body.authId,
+            auth_id: body.authId || '',
             year,
             timezone,
             callback_url: `${url.origin}/internal/scanner/callback`,
@@ -324,7 +399,7 @@ export default {
 
       if (url.pathname === '/api/scan/resume' && request.method === 'POST') {
         const body = (await request.json()) as { jobId?: string; authId?: string };
-        if (!body.jobId || !body.authId) {
+        if (!body.jobId) {
           return jsonResponse({ error: 'Не указано задание или авторизация' }, 400, corsOrigin);
         }
         const previous = await env.DB.prepare(
@@ -346,7 +421,7 @@ export default {
           const result = await proxyToScanner(env, '/internal/scan/start', 'POST', {
             job_id: body.jobId,
             telegram_user_id: user.id,
-            auth_id: body.authId,
+            auth_id: body.authId || '',
             year: previous.year,
             timezone: previous.timezone,
             callback_url: `${url.origin}/internal/scanner/callback`,
@@ -497,11 +572,19 @@ export default {
           env.DB.prepare('DELETE FROM recap_results WHERE telegram_user_id = ?').bind(user.id),
           env.DB.prepare('DELETE FROM scan_jobs WHERE telegram_user_id = ?').bind(user.id),
           env.DB.prepare('DELETE FROM user_settings WHERE telegram_user_id = ?').bind(user.id),
+          env.DB.prepare('DELETE FROM phone_contact_requests WHERE telegram_user_id = ?').bind(user.id),
         ]);
         return jsonResponse({ deleted: true }, 200, corsOrigin);
       }
     }
 
     return jsonResponse({ error: 'Not Found' }, 404, corsOrigin);
+  },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Short-lived contact exchange data is physically removed even when a
+    // user leaves the app after sharing their phone number.
+    ctx.waitUntil(env.DB.prepare(
+      'DELETE FROM phone_contact_requests WHERE expires_at <= ?'
+    ).bind(new Date().toISOString()).run().then(() => undefined));
   },
 };

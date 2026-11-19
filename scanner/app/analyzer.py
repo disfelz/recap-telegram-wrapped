@@ -433,6 +433,15 @@ class CheckpointStore:
         if path.exists():
             path.unlink()
 
+    def delete_for_user(self, telegram_user_id: int) -> None:
+        # Includes failed/partial checkpoints, not just currently running jobs.
+        for path in self._dir.glob('*.json'):
+            try:
+                if int(json.loads(path.read_text(encoding='utf-8')).get('telegram_user_id', -1)) == telegram_user_id:
+                    path.unlink(missing_ok=True)
+            except (ValueError, OSError, KeyError):
+                continue
+
 
 class RecapAnalyzer:
     def __init__(

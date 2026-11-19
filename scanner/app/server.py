@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import re
 from typing import Dict, Optional
 
 import httpx
@@ -11,11 +13,13 @@ from .analyzer import CheckpointStore, RecapAnalyzer, TelethonAdapter
 from .auth import MTProtoAuthManager
 from .config import ScannerSettings, configure_logging
 from .crypto import EphemeralSessionCipher
+from .session_store import EncryptedSessionStore
 
 settings = ScannerSettings()
 logger = configure_logging()
 cipher = EphemeralSessionCipher(settings.session_encryption_key_b64)
-auth_manager = MTProtoAuthManager(settings.telegram_api_id, settings.telegram_api_hash, cipher)
+session_store = EncryptedSessionStore(settings.session_store_dir, cipher)
+auth_manager = MTProtoAuthManager(settings.telegram_api_id, settings.telegram_api_hash, cipher, session_store)
 checkpoint_store = CheckpointStore(settings.checkpoint_dir)
 
 app = FastAPI(title="RECAP MTProto Scanner", docs_url=None, redoc_url=None)
@@ -24,6 +28,7 @@ scan_semaphore = asyncio.Semaphore(settings.max_concurrent_scans)
 active_cancel_events: Dict[str, asyncio.Event] = {}
 active_resume_events: Dict[str, asyncio.Event] = {}
 active_job_user_ids: Dict[str, int] = {}
+active_tasks: Dict[str, asyncio.Task] = {}
 
 
 def verify_internal_token(authorization: str = Header(default="")) -> None:
@@ -50,7 +55,7 @@ class PhoneVerifyReq(BaseModel):
 class ScanStartReq(BaseModel):
     job_id: str
     telegram_user_id: int
-    auth_id: str
+    auth_id: str = ""
     year: int
     timezone: str = "Europe/Moscow"
     callback_url: str
@@ -66,6 +71,42 @@ async def health() -> dict:
     return {"ok": True}
 
 
+class ResolveNamesReq(BaseModel):
+    telegram_user_id: int
+    chat_hashes: list[str]
+
+
+@app.post("/internal/chats/resolve", dependencies=[Depends(verify_internal_token)])
+async def resolve_chat_names(req: ResolveNamesReq) -> dict:
+    """Opt-in, transient labels. Never persist names to D1 or checkpoints."""
+    wanted = set(req.chat_hashes)
+    if len(wanted) > 20 or any(not re.fullmatch(r"[0-9a-f]{16}", key) for key in wanted):
+        raise HTTPException(status_code=422, detail="Invalid chat references")
+    if not wanted:
+        return {"names": {}}
+    try:
+        client = auth_manager.build_client_for_scan(req.telegram_user_id)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Telegram session unavailable")
+    result: dict[str, str] = {}
+    await client.connect()
+    try:
+        me = await client.get_me()
+        if not me or me.id != req.telegram_user_id:
+            raise HTTPException(status_code=403, detail="Telegram session mismatch")
+        async for dialog in client.iter_dialogs():
+            digest = hashlib.sha256(
+                f"{req.telegram_user_id}:{dialog.id}".encode("utf-8")
+            ).hexdigest()[:16]
+            if digest in wanted:
+                result[digest] = str(dialog.name or "Переписка")[:80]
+                if len(result) == len(wanted):
+                    break
+    finally:
+        await client.disconnect()
+    return {"names": result}
+
+
 @app.post("/internal/auth/qr/start", dependencies=[Depends(verify_internal_token)])
 async def qr_start(req: UserReq) -> dict:
     return await auth_manager.start_qr_login(req.telegram_user_id)
@@ -74,6 +115,14 @@ async def qr_start(req: UserReq) -> dict:
 @app.get("/internal/auth/qr/status", dependencies=[Depends(verify_internal_token)])
 async def qr_status(telegram_user_id: int, auth_id: str) -> dict:
     return await auth_manager.get_qr_status(telegram_user_id, auth_id)
+
+
+@app.get("/internal/auth/status", dependencies=[Depends(verify_internal_token)])
+async def authorization_status(telegram_user_id: int) -> dict:
+    try:
+        return {"authorized": auth_manager.has_saved_session(telegram_user_id)}
+    except Exception:
+        raise HTTPException(status_code=503, detail="Saved authorization is unreadable")
 
 
 @app.post("/internal/auth/phone/start", dependencies=[Depends(verify_internal_token)])
@@ -98,7 +147,7 @@ async def scan_start(req: ScanStartReq) -> dict:
     active_cancel_events[req.job_id] = cancel_event
     active_resume_events[req.job_id] = resume_event
     active_job_user_ids[req.job_id] = req.telegram_user_id
-    asyncio.create_task(_run_scan_job(req, cancel_event, resume_event))
+    active_tasks[req.job_id] = asyncio.create_task(_run_scan_job(req, cancel_event, resume_event))
     return {"jobId": req.job_id, "status": "queued"}
 
 
@@ -134,20 +183,28 @@ async def scan_cancel(req: ScanCancelReq) -> dict:
         resume_ev = active_resume_events.get(req.job_id)
         if resume_ev is not None:
             resume_ev.set()
-    await auth_manager.revoke_all_for_user(req.telegram_user_id)
     return {"cancelled": bool(ev)}
 
 
 @app.post("/internal/users/{telegram_user_id}/revoke", dependencies=[Depends(verify_internal_token)])
 async def revoke_user(telegram_user_id: int) -> dict:
-    # Deleting all data must also stop active readers from processing new pages.
+    tasks = []
     for job_id, user_id in list(active_job_user_ids.items()):
         if user_id == telegram_user_id:
             active_cancel_events[job_id].set()
-            resume_ev = active_resume_events.get(job_id)
-            if resume_ev is not None:
-                resume_ev.set()
-    await auth_manager.revoke_all_for_user(telegram_user_id)
+            active_resume_events[job_id].set()
+            task = active_tasks.get(job_id)
+            if task is not None:
+                task.cancel()
+                tasks.append(task)
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    try:
+        await auth_manager.revoke_all_for_user(telegram_user_id)
+    except Exception:
+        logger.error("Telegram authorization revocation failed, uid=%s", telegram_user_id)
+        raise HTTPException(status_code=503, detail="Telegram LogOut not confirmed")
+    checkpoint_store.delete_for_user(telegram_user_id)
     return {"revoked": True}
 
 
@@ -236,6 +293,6 @@ async def _run_scan_job(req: ScanStartReq, cancel_event: asyncio.Event, resume_e
         active_cancel_events.pop(req.job_id, None)
         active_resume_events.pop(req.job_id, None)
         active_job_user_ids.pop(req.job_id, None)
+        active_tasks.pop(req.job_id, None)
         if client is not None:
-            await auth_manager.terminate_client_session(client)
-        await auth_manager.revoke_all_for_user(req.telegram_user_id)
+            await client.disconnect()

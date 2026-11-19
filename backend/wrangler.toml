@@ -15,3 +15,6 @@ SCANNER_BASE_URL = "https://recap-scanner.onrender.com"
 # BOT_TOKEN
 # BOT_WEBHOOK_SECRET
 # SCANNER_SHARED_SECRET
+
+[triggers]
+crons = ["*/15 * * * *"]
