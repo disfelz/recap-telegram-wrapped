@@ -240,3 +240,23 @@ async def test_abandoned_authorization_is_revoked_but_paused_scan_is_preserved(c
     assert client.logouts == 1
     assert not store._path(old_id).exists()
     assert store._path(paused_id).is_file()
+
+
+@pytest.mark.asyncio
+async def test_logout_false_reply_does_not_claim_session_closed(configured_server, monkeypatch):
+    _server, manager, store = configured_server
+    user_id = 845108
+    store.save(user_id, "TEMPORARY-SESSION")
+
+    class TelegramRejectsLogout(FakeTelegramClient):
+        async def __call__(self, request):
+            assert isinstance(request, LogOutRequest)
+            self.logouts += 1
+            return False
+
+    client = TelegramRejectsLogout()
+    confirmed = await manager.close_scan_session(user_id, client)
+    assert confirmed is False
+    assert client.logouts == 1
+    assert client.disconnected
+    assert not store._path(user_id).exists()

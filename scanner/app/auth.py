@@ -315,6 +315,8 @@ class MTProtoAuthManager:
         try:
             if not client.is_connected():
                 await client.connect()
-            await client(LogOutRequest())
+            result = await client(LogOutRequest())
+            if result is False:
+                raise RuntimeError("Telegram did not acknowledge LogOutRequest")
         finally:
             await client.disconnect()
