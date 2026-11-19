@@ -28,7 +28,7 @@ jobs:
       - name: Install scanner dependencies
         run: python -m pip install -r scanner/requirements.txt pytest
       - name: Test 12 scanner scenarios
-        run: PYTHONPATH=. python -m pytest tests/test_analyzer.py -v
+        run: PYTHONPATH=. python -m pytest tests/test_analyzer.py tests/test_session_store.py -v
       - name: Compile Python files
         run: python -m compileall -q scanner
 
@@ -63,3 +63,19 @@ jobs:
       - name: Type-check Cloudflare Worker
         working-directory: backend
         run: npm run typecheck
+
+  source-zip:
+    name: RECAP v2 source ZIP
+    if: github.event_name == 'pull_request'
+    needs: [scanner-tests, frontend-build, backend-typecheck]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build source ZIP
+        run: |
+          zip -q -r RECAP-v2-source.zip frontend backend scanner shared tests docs .github README.md CHATGPT_INSTRUCTIONS.md .gitignore -x '*/node_modules/*' '*/__pycache__/*' '*.pyc' '*.env' '*.dev.vars'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RECAP-v2-source
+          path: RECAP-v2-source.zip
+          retention-days: 30
