@@ -445,3 +445,49 @@ async def test_14_checkpoint_excludes_real_chat_titles(tmp_path: Path):
     contents = (tmp_path / 'privacy.json').read_text(encoding='utf8')
     assert sensitive not in contents
     assert sensitive not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_15_live_heartbeat_during_one_chat_and_sequential_dialogs(tmp_path: Path):
+    """No overlapping chats; the outgoing counter advances before a large chat finishes."""
+    me = 100
+    dt = datetime(2026, 11, 1, 10, 0, tzinfo=timezone.utc)
+    first, second = 311, 312
+    messages = {
+        first: [FakeMessage(i, dt + timedelta(minutes=i), True, me) for i in range(1, 3)],
+        second: [FakeMessage(i, dt + timedelta(minutes=i), True, me) for i in range(1, 3)],
+    }
+
+    class SlowSource(FakeTelegramSource):
+        def __init__(self):
+            super().__init__(me, [
+                make_dialog(first, last_dt=dt + timedelta(days=1)),
+                make_dialog(second, last_dt=dt + timedelta(days=1)),
+            ], messages)
+            self.pages: List[int] = []
+
+        async def fetch_history_page(self, entity, *, limit, offset_id, offset_date):
+            self.pages.append(entity.id)
+            await asyncio.sleep(0.035)  # network wait, heartbeat must still report
+            return await super().fetch_history_page(
+                entity, limit=limit, offset_id=offset_id, offset_date=offset_date
+            )
+
+    source = SlowSource()
+    observed = []
+
+    async def capture(payload: dict) -> None:
+        observed.append(dict(payload))
+
+    analyzer = RecapAnalyzer(source, CheckpointStore(str(tmp_path)),
+                             progress_cb=capture, page_limit=2)
+    analyzer._progress_interval_sec = 0.01
+    result = await analyzer.run(job_id="heartbeat", year=2026, timezone_name="UTC")
+
+    assert result["completionStatus"] == "completed"
+    assert result["totalMessages"] == 4
+    assert source.pages == [first, first, second, second]
+    assert any(p["outgoingFound"] == 2 and p["processedDialogs"] == 0
+               for p in observed), "Counters must update inside a large chat"
+    assert observed[-1]["outgoingFound"] == 4
+    assert observed[-1]["processedDialogs"] == 2
