@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   X,
   Download,
@@ -45,13 +45,17 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const [revealed, setRevealed] = useState(false);
-  const touchStartX = useRef<number | null>(null);
+  const reduceMotion = useReducedMotion();
+  const [paused, setPaused] = useState(false);
+  const draggedRef = useRef(false);
 
   const next = () => {
+    setPaused(false);
     haptic('light');
     setSlide((s) => (s < TOTAL_SLIDES - 1 ? s + 1 : s));
   };
   const prev = () => {
+    setPaused(false);
     haptic('light');
     setSlide((s) => (s > 0 ? s - 1 : s));
   };
@@ -105,6 +109,7 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
       case 0:
         return (
           <>
+            <div className="flagship-story-intro-orbit" aria-hidden="true"><span/><span/></div>
             <div style={{margin:'auto 0',textAlign:'left'}}>
               <div className="ref-story-chapter">RECAP · ПЕРСОНАЛЬНАЯ ХРОНИКА</div>
               <h1 className="display-font" style={{fontSize:'clamp(70px,23vw,100px)',letterSpacing:-6,lineHeight:.95,margin:'12px 0 38px',
@@ -202,11 +207,13 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
                   </span>
                   <div style={{ height: 10, borderRadius: 99, background: 'rgba(247,245,255,0.08)', overflow: 'hidden' }}>
                     <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(v / maxWeekdayVal) * 100}%` }}
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
                       transition={{ duration: 0.5, delay: i * 0.04 }}
                       style={{
                         height: '100%',
+                        width: `${(v / maxWeekdayVal) * 100}%`,
+                        transformOrigin: 'left center',
                         borderRadius: 99,
                         background: i === peakWeekdayIdx ? '#A996FF' : 'rgba(133,184,255,0.45)',
                       }}
@@ -293,68 +300,45 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
 
       case 6:
         return (
-          <div style={{ margin: 'auto 0', textAlign: 'center' }}>
-            <div style={{ fontSize: 12, color: 'var(--accent-purple)', fontWeight: 700 }}>
-              07 · ВИДЕОСООБЩЕНИЯ (КРУЖКИ)
-            </div>
-            <div
-              style={{
-                width: 170,
-                height: 170,
-                borderRadius: '50%',
-                margin: '22px auto',
-                border: '3px solid #85B8FF',
-                background: 'radial-gradient(circle, rgba(133,184,255,0.22), rgba(21,19,34,0.9))',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-              }}
-            >
-              <Video size={26} color="#85B8FF" />
-              <div className="display-font" style={{ fontSize: 44, fontWeight: 700 }}>
-                <CountUp value={stats.videoNoteCount} />
+          <>
+            <div className="ref-story-chapter" style={{marginTop:8}}>07 · В КАДРЕ</div>
+            <div style={{margin:'auto 0',textAlign:'center'}}>
+              <div className="flagship-video-orbit">
+                <motion.div className="flagship-video-ring" animate={reduceMotion?{}:{scale:[1,1.09,1],opacity:[.55,1,.55]}}
+                  transition={{duration:3,repeat:Infinity,ease:'easeInOut'}}/>
+                <div className="flagship-video-core">
+                  <Video size={18} color="#afacff"/>
+                  <strong className="tabular"><CountUp value={stats.videoNoteCount}/></strong>
+                  <span>КРУЖКОВ</span>
+                </div>
               </div>
+              <h2 className="display-font" style={{fontSize:26,margin:'27px 0 8px'}}>Моменты в прямом эфире</h2>
+              <p style={{fontSize:13,color:'#9d99b4',maxWidth:270,margin:'0 auto',lineHeight:1.55}}>
+                {stats.videoNoteCount.toLocaleString('ru-RU')} видеосообщений, отправленных тобой в {stats.year} году.
+              </p>
             </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 15 }}>
-              кружков записано и отправлено за {stats.year} год.
-            </p>
-          </div>
+            <div className="ref-story-footer">Подсчитаны только твои исходящие видеосообщения.</div>
+          </>
         );
 
       case 7:
         return (
-          <div style={{ margin: 'auto 0' }}>
-            <div style={{ fontSize: 12, color: 'var(--accent-blue)', fontWeight: 700 }}>
-              08 · ВИЗУАЛЬНЫЙ ЯЗЫК
-            </div>
-            <h2 className="display-font" style={{ fontSize: 34, margin: '10px 0 18px' }}>
-              Фото, видео и реакции
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div className="card">
-                <ImageIcon size={18} color="#A996FF" />
-                <div className="display-font" style={{ fontSize: 32, fontWeight: 700, marginTop: 10 }}>
-                  <CountUp value={stats.photoCount} />
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>фотографий</div>
+          <>
+            <div className="ref-story-chapter" style={{marginTop:8}}>08 · ВИЗУАЛЬНЫЙ ЯЗЫК</div>
+            <div style={{margin:'auto 0'}}>
+              <h2 className="display-font" style={{fontSize:30,margin:'0 0 22px'}}>Не только слова.</h2>
+              <div className="flagship-media-layout">
+                <div className="flagship-media-hero"><ImageIcon size={22}/>
+                  <strong className="tabular"><CountUp value={stats.photoCount}/></strong><span>Фотографий</span></div>
+                <div className="flagship-media-side"><Video size={20}/>
+                  <strong className="tabular"><CountUp value={stats.videoCount}/></strong><span>Видеофайлов</span></div>
+                <div className="flagship-media-side flagship-media-stickers">
+                  <span style={{fontSize:20}}>✳</span><strong className="tabular"><CountUp value={stats.stickerAndGifCount}/></strong>
+                  <span>Стикеров и GIF</span></div>
               </div>
-              <div className="card">
-                <Video size={18} color="#85B8FF" />
-                <div className="display-font" style={{ fontSize: 32, fontWeight: 700, marginTop: 10 }}>
-                  <CountUp value={stats.videoCount} />
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>видеофайлов</div>
-              </div>
+              <p style={{fontSize:11,color:'#9693ab',marginTop:18}}>Каждый формат — отдельная часть твоего общения.</p>
             </div>
-            <div className="card" style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>СТИКЕРЫ И GIF</div>
-              <div className="display-font" style={{ fontSize: 38, fontWeight: 700, color: 'var(--accent-purple)' }}>
-                <CountUp value={stats.stickerAndGifCount} />
-              </div>
-            </div>
-          </div>
+          </>
         );
 
       case 8:
@@ -382,8 +366,10 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
                 {section.items.map((c,i)=><div key={c.chatHash}
                   style={{display:'grid',gridTemplateColumns:'20px minmax(0,1fr) auto',gap:7,marginTop:7,fontSize:11,color:'#d5d0e2'}}>
                   <span style={{color:'#9693ab'}}>0{i+1}</span>
-                  <span style={{overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
-                    {hideChatNames?(section.group?'Группа ':'Личный чат ')+(i+1):c.displayLabel}
+                  <span className={hideChatNames?'flagship-name-spoiler':''}
+                    aria-label={hideChatNames?'Имя скрыто':c.displayLabel}
+                    style={{overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
+                    {c.displayLabel || (section.group?'Группа ':'Личный чат ')+(i+1)}
                   </span><span style={{color:'#b6a5ee'}}>{c.sentMessages.toLocaleString('ru-RU')}</span>
                 </div>)}
               </div>)}
@@ -394,23 +380,23 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
 
       case 9:
         return (
-          <div style={{ margin: 'auto 0', textAlign: 'center' }}>
-            <div style={{ fontSize: 12, color: 'var(--accent-blue)', fontWeight: 700 }}>
-              10 · САМАЯ ДЛИННАЯ СЕРИЯ
-            </div>
-            <div style={{ margin: '18px auto 8px', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-              <Flame size={42} color="#A996FF" />
-              <span className="display-font" style={{ fontSize: 64, fontWeight: 700 }}>
-                <CountUp value={stats.longestStreakDays} />
-              </span>
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>дней подряд на связи</div>
-            {stats.longestStreakRange && (
-              <p style={{ color: 'var(--text-secondary)', fontSize: 13.5, marginTop: 10 }}>
-                {stats.longestStreakRange.start} — {stats.longestStreakRange.end}
+          <>
+            <div className="ref-story-chapter" style={{marginTop:8}}>10 · БЕЗ ПЕРЕРЫВА</div>
+            <div style={{margin:'auto 0',textAlign:'center'}}>
+              <div className="flagship-streak-figure">
+                <Flame size={27} color="#b6a5ff"/>
+                <strong className="tabular"><CountUp value={stats.longestStreakDays}/></strong>
+                <span>ДНЕЙ ПОДРЯД</span>
+              </div>
+              <h2 className="display-font" style={{fontSize:26,margin:'22px 0 6px'}}>Всегда на связи</h2>
+              {stats.longestStreakRange&&<div className="flagship-streak-dates">
+                <span>{stats.longestStreakRange.start}</span><span className="flagship-streak-date-line"/><span>{stats.longestStreakRange.end}</span>
+              </div>}
+              <p style={{fontSize:12,color:'#9693ab',margin:'20px auto 0',maxWidth:270}}>
+                Столько дней подряд ты отправлял хотя бы одно сообщение.
               </p>
-            )}
-          </div>
+            </div>
+          </>
         );
 
       case 10:
@@ -444,8 +430,8 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
           <>
             <div className="ref-story-chapter" style={{marginTop:8}}>12 · ИТОГОВАЯ ОТКРЫТКА</div>
             <div style={{margin:'auto 0'}}>
-              <motion.div initial={{opacity:0,scale:.92,y:15}} animate={{opacity:revealed?1:.3,scale:revealed?1:.96,y:0}}
-                transition={{duration:.5}} className="ref-story-final">
+              <motion.div initial={{opacity:0,scale:.92,rotateX:12,y:15}} animate={{opacity:revealed?1:.3,scale:revealed?1:.96,rotateX:0,y:0}}
+                transition={{duration:.6}} className="ref-story-final flagship-story-shimmer">
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:11,fontWeight:700}}>
                   <span style={{display:'flex',alignItems:'center',gap:7}}><span style={{color:'#a996ff'}}>◎</span> RECAP</span>
                   <span className="pill" style={{padding:'4px 9px'}}>{stats.year}</span>
@@ -483,31 +469,41 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
   };
 
   return (
-    <div
+    <motion.div
       className="story-fullscreen"
-      onTouchStart={(e) => {
-        touchStartX.current = e.touches[0].clientX;
+      drag="x"
+      dragMomentum={false}
+      dragElastic={0.14}
+      dragConstraints={{left:0,right:0}}
+      onDragEnd={(_event,info)=>{
+        if(Math.abs(info.offset.x)>45||Math.abs(info.velocity.x)>430){
+          draggedRef.current=true;
+          if(info.offset.x<0||info.velocity.x< -430)next();else prev();
+        }
+        setPaused(false);
       }}
-      onTouchEnd={(e) => {
-        if (touchStartX.current === null) return;
-        const delta = e.changedTouches[0].clientX - touchStartX.current;
-        touchStartX.current = null;
-        if (delta < -40) next();
-        else if (delta > 40) prev();
-      }}
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest('button')) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        if (e.clientX - rect.left < rect.width * 0.34) prev();
-        else next();
+      onPointerDown={()=>setPaused(true)}
+      onPointerUp={()=>setPaused(false)}
+      onPointerCancel={()=>setPaused(false)}
+      onPointerLeave={()=>setPaused(false)}
+      onContextMenu={e=>e.preventDefault()}
+      onClick={e=>{
+        if(draggedRef.current){draggedRef.current=false;return;}
+        if((e.target as HTMLElement).closest('button,input,a'))return;
+        const rect=e.currentTarget.getBoundingClientRect();
+        if(e.clientX-rect.left<rect.width*.35)prev();else next();
       }}
     >
       <div className="story-bars" style={{ gridTemplateColumns: `repeat(${TOTAL_SLIDES}, 1fr)` }}>
         {Array.from({ length: TOTAL_SLIDES }).map((_, idx) => (
           <div key={idx} className="story-bar-track">
             <div
-              className="story-bar-fill"
-              style={{ width: idx <= slide ? '100%' : '0%', transition: 'width 0.25s ease' }}
+              key={idx===slide?'current-'+slide:'static-'+idx}
+              className={'story-bar-fill '+(idx===slide&&slide<TOTAL_SLIDES-1&&!reduceMotion?'flagship-story-progress':'')}
+              style={{width:idx<=slide?'100%':'0%',transformOrigin:'left center',
+                transform:idx>slide?'scaleX(0)':idx<slide||slide===TOTAL_SLIDES-1||reduceMotion?'scaleX(1)':undefined,
+                animationPlayState:paused?'paused':'running'}}
+              onAnimationEnd={e=>{if(e.target===e.currentTarget&&idx===slide&&slide<TOTAL_SLIDES-1)next();}}
             />
           </div>
         ))}
@@ -548,5 +544,4 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
         </motion.div>
       </AnimatePresence>
     </div>
-  );
-};
+  };
