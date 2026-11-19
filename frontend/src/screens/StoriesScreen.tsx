@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import type { RecapStats } from '../../../shared/types';
 import { CountUp } from '../components/CountUp';
-import { downloadOrShareCard } from '../utils/exportCard';
+import { CardExportDialog } from '../components/CardExportDialog';
 import { haptic } from '../utils/telegram';
 
 const MONTHS_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
@@ -42,8 +42,7 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
   onClose,
 }) => {
   const [slide, setSlide] = useState(0);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState('');
+  const [exportSelection, setExportSelection] = useState<{format: 'story' | 'square'; action: 'download' | 'share'} | null>(null);
   const [revealed, setRevealed] = useState(false);
   const reduceMotion = useReducedMotion();
   const [paused, setPaused] = useState(false);
@@ -91,17 +90,10 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
   const voiceMinutes =
     stats.voiceTotalDurationSec !== null ? Math.round(stats.voiceTotalDurationSec / 60) : null;
 
-  const handleExport = async (fmt: 'story' | 'square', action: 'download' | 'share' = 'download') => {
-    try {
-      setExporting(true);
-      setExportError('');
-      haptic('medium');
-      await downloadOrShareCard(stats, fmt, true, action);
-    } catch {
-      setExportError('Не удалось сформировать открытку. Попробуй ещё раз.');
-    } finally {
-      setExporting(false);
-    }
+  const handleExport = (fmt: 'story' | 'square', action: 'download' | 'share' = 'download') => {
+    haptic('medium');
+    setPaused(true);
+    setExportSelection({format:fmt,action});
   };
 
   const renderSlide = () => {
@@ -455,16 +447,16 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
             </div>
             <div>
               <div className="ref-story-cta">
-                <button type="button" className="ref-story-btn primary" disabled={exporting}
+                <button type="button" className="ref-story-btn primary"
                   onClick={(e)=>{e.stopPropagation();void handleExport('story');}}><Download size={14}/> 9:16 (1080×1920)</button>
-                <button type="button" className="ref-story-btn" disabled={exporting}
+                <button type="button" className="ref-story-btn"
                   onClick={(e)=>{e.stopPropagation();void handleExport('square');}}><Download size={14}/> 1:1 (1080×1080)</button>
-                <button type="button" className="ref-story-btn" disabled={exporting}
+                <button type="button" className="ref-story-btn"
                   onClick={(e)=>{e.stopPropagation();void handleExport('story', 'share');}}><Share2 size={14}/> Поделиться</button>
                 <button type="button" className="ref-story-btn"
                   onClick={(e)=>{e.stopPropagation();onClose();}}><BarChart3 size={14}/> Аналитика</button>
               </div>
-              {exportError&&<div role="alert" style={{fontSize:11,color:'#ffd17a',marginTop:8}}>{exportError}</div>}
+              
             </div>
           </>
         );
@@ -474,6 +466,7 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
   };
 
   return (
+    <>
     <motion.div
       className="story-fullscreen"
       drag="x"
@@ -550,5 +543,8 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
         </motion.div>
       </AnimatePresence>
     </motion.div>
+    {exportSelection && <CardExportDialog stats={stats} format={exportSelection.format}
+      requestedAction={exportSelection.action} onClose={() => {setExportSelection(null);setPaused(false);}} />}
+    </>
   );
 };
