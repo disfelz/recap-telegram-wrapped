@@ -110,6 +110,12 @@ export default {
       if (['cancelled', 'completed', 'failed', 'partial'].includes(expected.status)) {
         return jsonResponse({ ok: true, ignored: true }, 200, corsOrigin);
       }
+      // A delayed progress callback must not override a manual pause/resume.
+      if ((expected.status === 'paused_user' &&
+           ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(payload.status)) ||
+          (expected.status !== 'paused_user' && payload.status === 'paused_user')) {
+        return jsonResponse({ ok: true, ignored: true }, 200, corsOrigin);
+      }
       const now = new Date().toISOString();
       const updateJob = await env.DB.prepare(
         `UPDATE scan_jobs
@@ -270,6 +276,13 @@ export default {
         if (!body.authId || typeof body.authId !== 'string') {
           return jsonResponse({ error: 'Отсутствует подтверждённая авторизация' }, 400, corsOrigin);
         }
+        // Also guard jobs paused by their owner; older D1 indexes may not yet include paused_user.
+        const existing = await env.DB.prepare(
+          "SELECT id FROM scan_jobs WHERE telegram_user_id = ? AND status IN ('queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait', 'paused_user') LIMIT 1"
+        ).bind(user.id).first();
+        if (existing) {
+          return jsonResponse({ error: 'Уже выполняется или приостановлен анализ. Продолжи или отмени его.' }, 409, corsOrigin);
+        }
         const jobId = crypto.randomUUID();
         const now = new Date().toISOString();
 
@@ -375,7 +388,58 @@ export default {
           outgoingFound: row.outgoing_found,
           floodWaitUntil: row.flood_wait_until,
           errorMessage: row.error_message,
+          updatedAt: row.updated_at,
         } }, 200, corsOrigin);
+      }
+
+      if (url.pathname === '/api/scan/pause' && request.method === 'POST') {
+        const body = (await request.json()) as { jobId?: string };
+        if (!body.jobId) return jsonResponse({ error: 'Не указано задание' }, 400, corsOrigin);
+        const row = await env.DB.prepare(
+          'SELECT status FROM scan_jobs WHERE id = ? AND telegram_user_id = ?'
+        ).bind(body.jobId, user.id).first<{ status: string }>();
+        if (!row) return jsonResponse({ error: 'Задание не найдено' }, 404, corsOrigin);
+        if (row.status === 'paused_user') return jsonResponse({ paused: true }, 200, corsOrigin);
+        if (!['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(row.status)) {
+          return jsonResponse({ error: 'Это задание нельзя приостановить' }, 409, corsOrigin);
+        }
+        let response: Response;
+        try {
+          response = await proxyToScanner(env, '/internal/scan/pause', 'POST', {
+            job_id: body.jobId, telegram_user_id: user.id,
+          });
+        } catch {
+          return jsonResponse({ error: 'Нет связи со сканером. Пауза не подтверждена.' }, 503, corsOrigin);
+        }
+        if (!response.ok) return response;
+        await env.DB.prepare(
+          "UPDATE scan_jobs SET status = 'paused_user', updated_at = ? WHERE id = ? AND telegram_user_id = ? AND status IN ('queued','auth_pending','quick_preview','scanning','paused_flood_wait')"
+        ).bind(new Date().toISOString(), body.jobId, user.id).run();
+        return jsonResponse({ paused: true }, 200, corsOrigin);
+      }
+
+      if (url.pathname === '/api/scan/unpause' && request.method === 'POST') {
+        const body = (await request.json()) as { jobId?: string };
+        if (!body.jobId) return jsonResponse({ error: 'Не указано задание' }, 400, corsOrigin);
+        const row = await env.DB.prepare(
+          'SELECT status, stage FROM scan_jobs WHERE id = ? AND telegram_user_id = ?'
+        ).bind(body.jobId, user.id).first<{ status: string; stage: string }>();
+        if (!row) return jsonResponse({ error: 'Задание не найдено' }, 404, corsOrigin);
+        if (row.status !== 'paused_user') return jsonResponse({ error: 'Это задание не на паузе' }, 409, corsOrigin);
+        let response: Response;
+        try {
+          response = await proxyToScanner(env, '/internal/scan/unpause', 'POST', {
+            job_id: body.jobId, telegram_user_id: user.id,
+          });
+        } catch {
+          return jsonResponse({ error: 'Нет связи со сканером. Возобновление не подтверждено.' }, 503, corsOrigin);
+        }
+        if (!response.ok) return response;
+        await env.DB.prepare(
+          "UPDATE scan_jobs SET status = ?, updated_at = ? WHERE id = ? AND telegram_user_id = ? AND status = 'paused_user'"
+        ).bind(row.stage === 'full_scan' ? 'scanning' : 'quick_preview',
+          new Date().toISOString(), body.jobId, user.id).run();
+        return jsonResponse({ resumed: true }, 200, corsOrigin);
       }
 
       if (url.pathname === '/api/scan/cancel' && request.method === 'POST') {
