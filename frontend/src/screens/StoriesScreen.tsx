@@ -477,7 +477,8 @@ export const StoriesScreen: React.FC<StoriesScreenProps> = ({
     <motion.div
       className="story-fullscreen"
       drag="x"
-      dragMomentum={false}
+      dragMomentum={true}
+      dragTransition={{bounceStiffness:550,bounceDamping:34}}
       dragElastic={0.14}
       dragConstraints={{left:0,right:0}}
       onDragEnd={(_event,info)=>{
