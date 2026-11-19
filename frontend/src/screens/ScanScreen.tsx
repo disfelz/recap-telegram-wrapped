@@ -1,195 +1,121 @@
-import React from 'react';
-import { motion } from 'motion/react';
-import { Activity, Clock, PauseCircle, PlayCircle, XCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
+import { Activity, AlertTriangle, ArrowRight, CheckCircle2, Clock3, PauseCircle, RotateCcw, ShieldCheck, XCircle } from 'lucide-react';
 import type { ScanProgressPayload } from '../../../shared/types';
+import { CountUp } from '../components/CountUp';
+import { haptic } from '../utils/telegram';
 
-interface ScanScreenProps {
-  progress: ScanProgressPayload;
-  onCancel: () => void;
-  onResume: () => void;
-  onOpenResults: () => void;
+interface Props {
+  progress:ScanProgressPayload;
+  onCancel:()=>void|Promise<void>;
+  onResume:()=>void;
+  onOpenResults:()=>void;
 }
 
-export const ScanScreen: React.FC<ScanScreenProps> = ({
-  progress,
-  onCancel,
-  onResume,
-  onOpenResults,
-}) => {
-  const pct =
-    progress.totalEligibleDialogs > 0
-      ? Math.min(100, Math.round((progress.processedDialogs / progress.totalEligibleDialogs) * 100))
-      : 0;
+export const ScanScreen:React.FC<Props>=({progress,onCancel,onResume,onOpenResults})=>{
+  const reduce=useReducedMotion();
+  const [now,setNow]=useState(()=>Date.now());
+  const [lastUpdate,setLastUpdate]=useState(()=>Date.now());
+  const isFlood=progress.status==='paused_flood_wait';
+  const isDone=progress.status==='completed'||progress.status==='partial';
+  const isCancelled=progress.status==='cancelled';
+  const isFailed=progress.status==='failed';
+  const active=!isDone&&!isCancelled&&!isFailed;
+  const total=progress.totalEligibleDialogs;
+  const pct=total>0?Math.min(100,Math.round(progress.processedDialogs/total*100)):isDone?100:0;
+  const circumference=2*Math.PI*80;
+  const deadline=progress.floodWaitUntil?Date.parse(progress.floodWaitUntil):NaN;
+  const remaining=Number.isFinite(deadline)?Math.max(0,Math.ceil((deadline-now)/1000)):null;
+  const statusFresh=now-lastUpdate<9000;
+  const mm=remaining!==null?String(Math.floor(remaining/60)).padStart(2,'0'):null;
+  const ss=remaining!==null?String(remaining%60).padStart(2,'0'):null;
 
-  const isFlood = progress.status === 'paused_flood_wait';
-  const isDone = progress.status === 'completed' || progress.status === 'partial';
-  const isCancelled = progress.status === 'cancelled';
-  const isFailed = progress.status === 'failed';
+  useEffect(()=>{setLastUpdate(Date.now());},[progress]);
+  useEffect(()=>{
+    if(!active)return;
+    const timer=window.setInterval(()=>setNow(Date.now()),1000);
+    return()=>window.clearInterval(timer);
+  },[active]);
 
-  return (
-    <div className="screen" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span className="pill">
-          <Activity size={13} />
-          {progress.stage === 'quick_preview' ? 'Стадия 1 · Обзор диалогов' : 'Стадия 2 · Точный подсчёт'}
-        </span>
-        <span className="tabular" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          {progress.year}
-        </span>
-      </div>
+  const title=progress.status==='completed'?'Анализ завершён':
+    progress.status==='partial'?'Частичная статистика':
+    isFlood?'Telegram взял паузу':isCancelled?'Анализ остановлен':
+    isFailed?'Анализ прервался':progress.stage==='quick_preview'?'Изучаем диалоги':'Считаем сообщения';
+  const subtitle=progress.status==='completed'?'Все доступные данные обработаны. Твой RECAP готов.':
+    progress.status==='partial'?'Некоторые диалоги недоступны или не были завершены. Показаны только проверенные результаты.':
+    isFlood?'Telegram временно ограничил частоту запросов. Прогресс сохранён, работа продолжится после паузы.':
+    isCancelled?'Сканирование остановлено. При необходимости можно продолжить после повторного входа.':
+    isFailed?(progress.errorMessage||'Не удалось завершить сканирование. Результаты не выдаются за полный анализ.'):
+    'Мы учитываем только твои исходящие сообщения. Тексты не сохраняются, медиафайлы не скачиваются.';
 
-      {/* Animated scanner ring */}
-      <div className="card" style={{ textAlign: 'center', padding: '28px 18px' }}>
-        <div style={{ position: 'relative', width: 132, height: 132, margin: '0 auto 18px' }}>
-          <svg width="132" height="132" viewBox="0 0 132 132">
-            <circle cx="66" cy="66" r="56" stroke="rgba(247,245,255,0.1)" strokeWidth="8" fill="none" />
-            <motion.circle
-              cx="66"
-              cy="66"
-              r="56"
-              stroke="url(#scanGrad)"
-              strokeWidth="8"
-              strokeLinecap="round"
-              fill="none"
-              strokeDasharray={352}
-              animate={{ strokeDashoffset: 352 - (352 * pct) / 100 }}
-              transition={{ duration: 0.45 }}
-              transform="rotate(-90 66 66)"
-            />
-            <defs>
-              <linearGradient id="scanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#A996FF" />
-                <stop offset="100%" stopColor="#85B8FF" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div
-            className="display-font tabular"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'grid',
-              placeItems: 'center',
-              fontSize: 28,
-              fontWeight: 700,
-            }}
-          >
-            {progress.totalEligibleDialogs > 0 ? `${pct}%` : '—'}
-          </div>
-        </div>
-
-        <h2 className="display-font" style={{ margin: '0 0 6px', fontSize: 22 }}>
-          {progress.status === 'completed'
-            ? 'Анализ завершён'
-            : progress.status === 'partial'
-            ? 'Частичная статистика'
-            : isFlood
-            ? 'Пауза Telegram (FloodWait)'
-            : isCancelled
-            ? 'Сканирование остановлено'
-            : isFailed
-            ? 'Анализ прервался'
-            : 'Считаем твои сообщения'}
-        </h2>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-          {isFlood
-            ? 'Telegram временно ограничил частоту запросов. Прогресс сохранён, анализ продолжится автоматически.'
-            : progress.status === 'partial'
-            ? 'Часть диалогов оказалась недоступна или скан был прерван — показаны только подтверждённые цифры.'
-            : 'Считаются строго твои исходящие сообщения без загрузки медиафайлов.'}
-        </p>
-      </div>
-
-      {/* Real-time counters */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div className="card">
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>ОБРАБОТАНО ЧАТОВ</div>
-          <div className="display-font tabular" style={{ fontSize: 26, fontWeight: 700, marginTop: 6 }}>
-            {progress.processedDialogs}
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              {' '}
-              / {progress.totalEligibleDialogs || '—'}
-            </span>
-          </div>
-        </div>
-        <div className="card">
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>ТВОИХ СООБЩЕНИЙ</div>
-          <div
-            className="display-font tabular"
-            style={{ fontSize: 26, fontWeight: 700, marginTop: 6, color: 'var(--accent-purple)' }}
-          >
-            {progress.outgoingFound.toLocaleString('ru-RU')}
-          </div>
-        </div>
-      </div>
-
-      {!isDone && !isCancelled && !isFailed && (
-        <div className="card" style={{ fontSize: 13, lineHeight: 1.55 }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Можно не ждать на этом экране</div>
-          <div style={{ color: 'var(--text-secondary)' }}>
-            Можешь закрыть Mini App — анализ выполняется на сервере. Бот сообщит о готовом результате,
-            а после повторного открытия RECAP покажет сохранённый прогресс.
-          </div>
-          <div style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginTop: 8 }}>
-            Важно: на бесплатном Render перезапуск сервера может прервать анализ.
-          </div>
-        </div>
-      )}
-
-      {isFlood && (
-        <div
-          className="card"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            borderColor: 'rgba(255,209,122,0.4)',
-            color: 'var(--warning)',
-            fontSize: 13,
-          }}
-        >
-          <Clock size={18} /> Соблюдаем паузу Telegram — прогресс не потерян.
-        </div>
-      )}
-
-      {progress.status === 'partial' && (
-        <div
-          className="card"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            borderColor: 'rgba(255,209,122,0.4)',
-            color: 'var(--warning)',
-            fontSize: 13,
-          }}
-        >
-          <AlertTriangle size={18} /> Статус: Частичная статистика (не все чаты завершены).
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {isDone ? (
-          <>
-            <button className="btn btn-primary" onClick={onOpenResults}>
-              <CheckCircle2 size={17} /> Смотреть RECAP {progress.year}
-            </button>
-            {progress.status === 'partial' && (
-              <button className="btn btn-secondary" onClick={onResume}>
-                <PlayCircle size={17} /> Досканировать после авторизации
-              </button>
-            )}
-          </>
-        ) : isCancelled || isFailed ? (
-          <button className="btn btn-primary" onClick={onResume}>
-            <PlayCircle size={17} /> {isFailed ? 'Повторить анализ' : 'Продолжить с места остановки'}
-          </button>
-        ) : (
-          <button className="btn btn-danger" onClick={onCancel}>
-            {isFlood ? <PauseCircle size={17} /> : <XCircle size={17} />} Отменить и завершить сессию
-          </button>
-        )}
-      </div>
+  return <main className="screen flagship-scan">
+    <header className="flagship-scan-heading">
+      <span className="flagship-eyebrow">RECAP / {progress.year}</span>
+      <h1>Анализ активности</h1>
+      <p>Твоя история собирается из реальных данных.</p>
+    </header>
+    <div className="flagship-stage-stepper" aria-label="Этапы анализа">
+      <div className="active"><span>01</span><b>Быстрый обзор</b></div>
+      <div className="flagship-stage-line"/>
+      <div className={progress.stage==='full_scan'?'active':''}><span>02</span><b>Точный подсчёт</b></div>
     </div>
-  );
+    <section className="flagship-scan-main">
+      <div className="flagship-scan-radar">
+        <motion.div className="flagship-scan-pulse" animate={reduce?{}:{scale:[.92,1.10,.92],opacity:[.18,.5,.18]}}
+          transition={{repeat:Infinity,duration:3.2,ease:'easeInOut'}}/>
+        <svg viewBox="0 0 200 200" role="img" aria-label={'Выполнено '+pct+' процентов'} className="flagship-scan-ring">
+          <defs><linearGradient id="recap-scan-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#A996FF"/><stop offset="100%" stopColor="#85B8FF"/>
+          </linearGradient></defs>
+          <circle cx="100" cy="100" r="80" fill="none" stroke="rgba(169,150,255,.11)" strokeWidth="8"/>
+          <motion.circle cx="100" cy="100" r="80" fill="none" stroke="url(#recap-scan-gradient)" strokeWidth="8"
+            strokeLinecap="round" transform="rotate(-90 100 100)" strokeDasharray={circumference}
+            initial={false} animate={{strokeDashoffset:circumference*(1-pct/100)}}
+            transition={{duration:reduce?0:.65,ease:'easeOut'}}/>
+          <circle cx="100" cy="100" r="61" fill="none" stroke="rgba(169,150,255,.10)" strokeDasharray="2 8"/>
+        </svg>
+        <div className="flagship-scan-radar-value"><strong className="tabular"><CountUp value={pct} durationMs={550}/>%</strong>
+          <span>{isDone?'ГОТОВО':isFlood?'ПАУЗА':progress.stage==='quick_preview'?'ЭТАП 1 / 2':'ЭТАП 2 / 2'}</span>
+        </div>
+      </div>
+      <h2>{title}</h2>
+      <p>{subtitle}</p>
+    </section>
+    <div className="flagship-scan-metrics">
+      <div><span>ОБРАБОТАНО ЧАТОВ</span><strong className="tabular"><CountUp value={progress.processedDialogs}/>
+        <small> / {total||'—'}</small></strong></div>
+      <div><span>НАЙДЕНО ИСХОДЯЩИХ</span><strong className="tabular"><CountUp value={progress.outgoingFound}/></strong></div>
+    </div>
+    <div className="flagship-connection-status" role="status">
+      <span className={'flagship-signal-dot '+(statusFresh?'online':'offline')}/>
+      <span>{!active?'Сканирование не выполняется':statusFresh?'Связь с API активна':'Нет свежих данных от API'}</span>
+      <span className="flagship-connection-code">{progress.stage==='quick_preview'?'БЫСТРЫЙ ОБЗОР':'ТОЧНЫЙ ПОДСЧЁТ'}</span>
+    </div>
+    {isFlood&&<div className="flagship-flood-card">
+      <div className="flagship-flood-title"><PauseCircle size={20}/><strong>Пауза по требованию Telegram</strong></div>
+      <div className="flagship-flood-time tabular">{remaining!==null?mm+':'+ss:'Ожидаем завершения паузы'}</div>
+      <p>Telegram ограничил запросы на время. Уже обработанные данные сохранены, ничего начинать сначала не нужно.</p>
+    </div>}
+    {progress.status==='partial'&&<div className="flagship-partial-note"><AlertTriangle size={18}/>
+      <span>Частичный результат не выдаётся за полную статистику.</span></div>}
+    {active&&<div className="flagship-scan-background-note">
+      <Clock3 size={17}/><div><strong>Не нужно держать приложение открытым</strong>
+        <p>Сканирование выполняется на сервере. Ты сможешь вернуться в Mini App и продолжить просмотр прогресса.</p></div>
+    </div>}
+    <div className="flagship-scan-actions">
+      {isDone?<>
+        <button className="btn btn-primary" onClick={()=>{haptic('success');onOpenResults();}}>
+          <CheckCircle2 size={17}/> Смотреть RECAP {progress.year}<ArrowRight size={16}/>
+        </button>
+        {progress.status==='partial'&&<button className="btn btn-secondary" onClick={()=>{haptic('medium');onResume();}}>
+          <RotateCcw size={16}/> Продолжить анализ
+        </button>}
+      </>:isCancelled||isFailed?
+        <button className="btn btn-primary" onClick={()=>{haptic('medium');onResume();}}><RotateCcw size={17}/> Продолжить с места остановки</button>
+      :<button className="btn btn-danger" onClick={()=>{haptic('medium');void onCancel();}}><XCircle size={17}/>
+        Отменить и завершить сессию
+      </button>}
+      <div className="flagship-scan-privacy"><ShieldCheck size={14}/> Временная MTProto-сессия завершается по завершении анализа.</div>
+    </div>
+  </main>;
 };
