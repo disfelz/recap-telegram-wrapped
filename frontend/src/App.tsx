@@ -18,14 +18,34 @@ type Screen = 'welcome' | 'connect' | 'scan' | 'stories' | 'analytics' | 'settin
 
 const DEMO_ALLOWED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === 'true';
 
+function prefKey(name: string): string | null {
+  // Preferences are isolated by Telegram identity and never contain conversation data.
+  const id = getTelegramWebApp()?.initDataUnsafe?.user?.id;
+  return id ? 'recap:preferences:' + id + ':' + name : null;
+}
+function readPreference(name: string): string | null {
+  const key = prefKey(name);
+  if (!key) return null;
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const reduceMotion = useReducedMotion();
   const [demoMode, setDemoMode] = useState<boolean>(DEMO_ALLOWED && !import.meta.env.VITE_API_BASE_URL);
   const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [timezone, setTimezone] = useState<string>('Europe/Moscow');
-  const [hideChatNames, setHideChatNames] = useState<boolean>(true);
+  const [timezone, setTimezone] = useState<string>(() => readPreference('timezone') || 'Europe/Moscow');
+  const [hideChatNames, setHideChatNames] = useState<boolean>(() => readPreference('hide-names') !== 'false');
   const [liveRecaps, setLiveRecaps] = useState<Record<number, RecapStats>>({});
+  useEffect(() => {
+    const tzKey = prefKey('timezone');
+    const namesKey = prefKey('hide-names');
+    try {
+      if (tzKey) window.localStorage.setItem(tzKey, timezone);
+      if (namesKey) window.localStorage.setItem(namesKey, String(hideChatNames));
+    } catch { /* Storage may be disabled in a restricted WebView. */ }
+  }, [timezone, hideChatNames]);
   const [resumeJobId, setResumeJobId] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
   const scanPoller = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -345,6 +365,8 @@ export default function App() {
             if (scanPoller.current) clearInterval(scanPoller.current);
             scanPoller.current = null;
             setLiveRecaps({});
+            setTimezone('Europe/Moscow');
+            setHideChatNames(true);
             setScreen('welcome');
           }}
         />
