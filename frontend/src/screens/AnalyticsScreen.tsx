@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
+import { CountUp } from '../components/CountUp';
 import { AlertTriangle, Download, Eye, EyeOff, Play, Share2 } from 'lucide-react';
 import type { MessageKind, RecapStats, TopChatStat } from '../../../shared/types';
 import { downloadOrShareCard } from '../utils/exportCard';
@@ -30,11 +32,12 @@ function Chats({items,hidden,group}:{items:TopChatStat[];hidden:boolean;group:bo
 export const AnalyticsScreen:React.FC<Props>=({
   stats,prevYearStats,availableYears,selectedYear,hideChatNames,onSelectYear,onToggleHideNames,onOpenStories
 })=>{
+  const reduceMotion=useReducedMotion();
   const peakMonth=stats.byMonth.indexOf(Math.max(...stats.byMonth));
   const peakHour=stats.byHour.indexOf(Math.max(...stats.byHour));
   const [month,setMonth]=useState(peakMonth),[hour,setHour]=useState(peakHour);
-  const [kind,setKind]=useState<MessageKind>('text'),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  useEffect(()=>{setMonth(peakMonth);setHour(peakHour);setKind('text');},[stats.year]);
+  const [kind,setKind]=useState<MessageKind>('text'),[weekday,setWeekday]=useState<number|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  useEffect(()=>{setMonth(peakMonth);setHour(peakHour);setKind('text');setWeekday(null);},[stats.year]);
   const maxMonth=Math.max(1,...stats.byMonth), maxDay=Math.max(1,...stats.byWeekday), maxHour=Math.max(1,...stats.byHour);
   const totalKinds=Object.values(stats.byKind).reduce((a,v)=>a+v,0);
   const kinds=KINDS.map((k)=>({...k,count:stats.byKind[k.key]||0}));
@@ -63,11 +66,11 @@ export const AnalyticsScreen:React.FC<Props>=({
     <section className="ref-panel ref-summary">
       <div className="ref-header-row"><span className="ref-overline">ВСЕГО ОТПРАВЛЕНО ЗА {stats.year}</span>
         {yoy!==null&&<span className="ref-compare">{yoy>0?'+':''}{yoy}% к {stats.year-1}</span>}</div>
-      <strong className="ref-hero-total">{fmt(stats.totalMessages)}</strong>
+      <strong className="ref-hero-total"><CountUp value={stats.totalMessages} durationMs={1050}/></strong>
       <div className="ref-summary-grid">
-        <div><b>{fmt(stats.activeDays)}</b><small>акт. дней</small></div>
-        <div><b>{stats.longestStreakDays}д</b><small>макс. серия</small></div>
-        <div><b>{fmt(chatCount)}</b><small>чатов</small></div>
+        <div><b><CountUp value={stats.activeDays}/></b><small>акт. дней</small></div>
+        <div><b><CountUp value={stats.longestStreakDays}/>д</b><small>макс. серия</small></div>
+        <div><b><CountUp value={chatCount}/></b><small>чатов</small></div>
       </div>
     </section>
     <section className="ref-panel">
@@ -75,26 +78,26 @@ export const AnalyticsScreen:React.FC<Props>=({
         <div className="ref-chart-detail"><b>{MONTHS[month]}</b><small>{fmt(stats.byMonth[month]||0)} ({selectedMonthShare}%)</small></div></div>
       <div className="ref-months" role="group" aria-label="Активность по месяцам">
         {stats.byMonth.map((v,i)=><button className={month===i?'active':''} key={i} type="button"
-          aria-pressed={month===i} aria-label={MONTHS[i]+': '+fmt(v)}
+          aria-pressed={month===i} aria-label={MONTHS[i]+': '+fmt(v)} title={MONTHS[i]+': '+fmt(v)+' сообщений'} onMouseEnter={()=>setMonth(i)} onFocus={()=>setMonth(i)}
           onClick={()=>{setMonth(i);haptic('selection');}}>
-          <span className="ref-month-bar-container"><span style={{height:Math.max(3,v/maxMonth*100)+'%'}}/></span>
+          <span className="ref-month-bar-container"><motion.span initial={reduceMotion?false:{scaleY:0}} animate={{scaleY:1}} transition={{duration:.55,delay:i*.035,ease:'easeOut'}} style={{height:Math.max(3,v/maxMonth*100)+'%',transformOrigin:'bottom center'}}/></span>
           <small>{MONTHS[i][0]}</small>
         </button>)}
       </div>
     </section>
     <section className="ref-panel"><h2>Дни недели</h2><div className="ref-weekdays">
-      {stats.byWeekday.map((v,i)=><div key={i} className="ref-weekday">
-        <span>{DAYS[i]}</span><div className="ref-track"><span className={v===maxDay?'ref-peak':''} style={{width:v/maxDay*100+'%'}}/></div>
+      {stats.byWeekday.map((v,i)=><button type="button" key={i} className={'ref-weekday '+(weekday===i?'ref-selected-weekday':'')} title={DAYS[i]+': '+fmt(v)} onClick={()=>{setWeekday(i);haptic('selection');}}>
+        <span>{DAYS[i]}</span><div className="ref-track"><motion.span className={v===maxDay?'ref-peak':''} initial={reduceMotion?false:{scaleX:0}} animate={{scaleX:1}} transition={{duration:.52,delay:i*.04}} style={{width:v/maxDay*100+'%',transformOrigin:'left'}}/></div>
         <small>{fmt(v)}</small>
-      </div>)}
+      </button>)}
     </div></section>
     <section className="ref-panel">
       <div className="ref-header-row"><h2>Активность по часам (00–23)</h2>
         <div className="ref-chart-detail"><b>{String(hour).padStart(2,'0')}:00</b><small>· {fmt(stats.byHour[hour]||0)}</small></div></div>
       <div className="ref-hours" role="group" aria-label="Активность по часам">
-        {stats.byHour.map((v,i)=><button key={i} type="button" className={hour===i?'active':''}
+        {stats.byHour.map((v,i)=><button key={i} type="button" className={hour===i?'active':i<=4||i>=22?'night':''}
           title={String(i).padStart(2,'0')+':00 — '+fmt(v)}
-          aria-pressed={hour===i} onClick={()=>{setHour(i);haptic('selection');}}
+          aria-pressed={hour===i} onMouseEnter={()=>setHour(i)} onFocus={()=>setHour(i)} onClick={()=>{setHour(i);haptic('selection');}}
           style={{background:'rgba(169,150,255,'+(0.13+0.8*v/maxHour).toFixed(2)+')'}}>
           {String(i).padStart(2,'0')}
         </button>)}
@@ -107,16 +110,16 @@ export const AnalyticsScreen:React.FC<Props>=({
           <circle cx="58" cy="58" r="47" fill="none" stroke="#28233a" strokeWidth="13"/>
           {kinds.map((k)=>{
             const length=totalKinds?k.count/totalKinds*circumference:0;
-            const elm=<circle key={k.key} cx="58" cy="58" r="47" fill="none" stroke={k.color}
+            const elm=<motion.circle key={k.key} cx="58" cy="58" r="47" fill="none" stroke={k.color}
               strokeWidth={kind===k.key?17:13}
               strokeDasharray={length+' '+Math.max(0,circumference-length)}
-              strokeDashoffset={-offset} transform="rotate(-90 58 58)"/>;
+              strokeDashoffset={-offset} initial={reduceMotion?false:{strokeDashoffset:-offset+length}} animate={{strokeDashoffset:-offset}} transition={{duration:.75,delay:.12}} transform="rotate(-90 58 58)"/>;
             offset+=length;return elm;
           })}
         </svg><div className="ref-donut-value"><small>{selectedKind.name}</small><b>{fmt(selectedKind.count)}</b></div></div>
         <div className="ref-kind-list">{kinds.filter(k=>k.count>0).map(k=><button key={k.key} type="button"
           className={k.key===kind?'active':''} aria-pressed={k.key===kind}
-          onClick={()=>{setKind(k.key);haptic('selection');}}>
+          onMouseEnter={()=>setKind(k.key)} onFocus={()=>setKind(k.key)} onClick={()=>{setKind(k.key);haptic('selection');}}>
           <i style={{background:k.color}}/><span>{k.name}</span><b>{fmt(k.count)}</b>
         </button>)}</div>
       </div>
@@ -140,7 +143,7 @@ export const AnalyticsScreen:React.FC<Props>=({
       <div className="ref-export-grid">
         <button type="button" disabled={busy} onClick={()=>void exportPng('story')}><Download size={14}/> 1080×1920</button>
         <button type="button" disabled={busy} onClick={()=>void exportPng('square')}><Download size={14}/> 1080×1080</button>
-        <button type="button" onClick={()=>{haptic('light');onOpenStories();}}><Play size={14}/> Пересмотреть Stories</button>
+        <button type="button" onClick={()=>{haptic('light');onOpenStories();}}><Play size={14}/> Пересмотреть истории</button>
         <button type="button" disabled={busy} onClick={()=>void exportPng('story','share')}><Share2 size={14}/> Поделиться</button>
       </div>{error&&<p role="alert" className="ref-error">{error}</p>}
     </section>

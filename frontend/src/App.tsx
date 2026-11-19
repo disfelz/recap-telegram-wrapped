@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import './styles/reference.css';
+import './styles/flagship.css';
 import { Home, BarChart3, Sparkles, Settings } from 'lucide-react';
 import type { RecapStats, ScanProgressPayload } from '../../shared/types';
 import { recapApi } from './api/client';
 import { DEMO_RECAP_BY_YEAR } from './data/demoData';
-import { initTelegramMiniApp, haptic } from './utils/telegram';
+import { getTelegramWebApp, initTelegramMiniApp, haptic } from './utils/telegram';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ConnectScreen } from './screens/ConnectScreen';
 import { ScanScreen } from './screens/ScanScreen';
@@ -16,13 +18,34 @@ type Screen = 'welcome' | 'connect' | 'scan' | 'stories' | 'analytics' | 'settin
 
 const DEMO_ALLOWED = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === 'true';
 
+function prefKey(name: string): string | null {
+  // Preferences are isolated by Telegram identity and never contain conversation data.
+  const id = getTelegramWebApp()?.initDataUnsafe?.user?.id;
+  return id ? 'recap:preferences:' + id + ':' + name : null;
+}
+function readPreference(name: string): string | null {
+  const key = prefKey(name);
+  if (!key) return null;
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('welcome');
+  const reduceMotion = useReducedMotion();
   const [demoMode, setDemoMode] = useState<boolean>(DEMO_ALLOWED && !import.meta.env.VITE_API_BASE_URL);
   const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [timezone, setTimezone] = useState<string>('Europe/Moscow');
-  const [hideChatNames, setHideChatNames] = useState<boolean>(true);
+  const [timezone, setTimezone] = useState<string>(() => readPreference('timezone') || 'Europe/Moscow');
+  const [hideChatNames, setHideChatNames] = useState<boolean>(() => readPreference('hide-names') !== 'false');
   const [liveRecaps, setLiveRecaps] = useState<Record<number, RecapStats>>({});
+  useEffect(() => {
+    const tzKey = prefKey('timezone');
+    const namesKey = prefKey('hide-names');
+    try {
+      if (tzKey) window.localStorage.setItem(tzKey, timezone);
+      if (namesKey) window.localStorage.setItem(namesKey, String(hideChatNames));
+    } catch { /* Storage may be disabled in a restricted WebView. */ }
+  }, [timezone, hideChatNames]);
   const [resumeJobId, setResumeJobId] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
   const scanPoller = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -53,6 +76,7 @@ export default function App() {
           if (scanPoller.current) clearInterval(scanPoller.current);
           scanPoller.current = null;
           if (job.status === 'completed' || job.status === 'partial') {
+            haptic('success');
             const { results } = await recapApi.getSavedRecaps();
             const byYear: Record<number, RecapStats> = {};
             results.forEach((r) => { byYear[r.year] = r; });
@@ -106,8 +130,25 @@ export default function App() {
   const activeDataMap = demoMode ? DEMO_RECAP_BY_YEAR : liveRecaps;
   // Never substitute demo statistics for missing Live data.
   const currentStats: RecapStats | undefined = activeDataMap[selectedYear];
-  const availableYears = demoMode ? Object.keys(DEMO_RECAP_BY_YEAR).map(Number).sort((a,b) => b-a) :
-    [...new Set([selectedYear, ...Object.keys(liveRecaps).map(Number)])].sort((a,b) => b-a);
+  const availableYears = [...new Set([2026, 2025, 2024, ...Object.keys(activeDataMap).map(Number)])].sort((a,b) => b-a);
+  const toggleHideNames = () => {
+    const value = !hideChatNames;
+    setHideChatNames(value);
+    if (!demoMode) void recapApi.updateSettings(timezone, value).catch(() => undefined);
+  };
+
+  useEffect(() => {
+    const back = getTelegramWebApp()?.BackButton;
+    if (!back) return;
+    const goBack = () => {
+      haptic('light');
+      setScreen((current) => current === 'stories' ? 'analytics' : 'welcome');
+    };
+    if (screen === 'welcome') back.hide();
+    else { back.show(); back.onClick(goBack); }
+    return () => { back.offClick(goBack); };
+  }, [screen]);
+
   const openResults = (target: 'stories' | 'analytics') => {
     if (!demoMode && !currentStats) {
       setAppError('За выбранный год ещё нет проверенной статистики. Сначала подключи аккаунт и запусти анализ.');
@@ -211,12 +252,19 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <div className="ambient-bg">
+      <div className={`ambient-bg ambient-${screen}`}>
         <div className="ambient-orb one" />
         <div className="ambient-orb two" />
       </div>
 
       {appError && <div role="alert" className="card" style={{margin:16, borderColor:'rgba(255,209,122,.5)', fontSize:13}}>{appError}</div>}
+      <AnimatePresence mode="wait" initial={false}>
+      <motion.div key={screen}
+        style={{ position: 'relative', zIndex: screen === 'settings' ? 60 : screen === 'stories' ? 45 : 1 }}
+        initial={reduceMotion ? { opacity: 0 } : screen === 'stories' ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.985 }}
+        animate={reduceMotion || screen === 'stories' ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+        exit={reduceMotion || screen === 'stories' ? { opacity: 0 } : { opacity: 0, y: -12, scale: 0.99 }}
+        transition={{ duration: reduceMotion ? 0.01 : 0.26, ease: 'easeOut' }}>
       {screen === 'welcome' && (
         <WelcomeScreen
           selectedYear={selectedYear}
@@ -275,7 +323,7 @@ export default function App() {
         <StoriesScreen
           stats={currentStats}
           hideChatNames={hideChatNames}
-          onToggleHideNames={() => setHideChatNames((v) => !v)}
+          onToggleHideNames={toggleHideNames}
           onClose={() => openResults('analytics')}
         />
       )}
@@ -287,7 +335,7 @@ export default function App() {
           availableYears={availableYears}
           selectedYear={selectedYear}
           hideChatNames={hideChatNames}
-          onToggleHideNames={() => { setHideChatNames((v) => !v); }}
+          onToggleHideNames={toggleHideNames}
           onSelectYear={setSelectedYear}
           onOpenStories={() => openResults('stories')}
         />
@@ -310,21 +358,22 @@ export default function App() {
             setTimezone(tz);
             if (!demoMode) recapApi.updateSettings(tz, hideChatNames).catch(() => undefined);
           }}
-          onToggleHideNames={() => {
-            const nextVal = !hideChatNames;
-            setHideChatNames(nextVal);
-            if (!demoMode) recapApi.updateSettings(timezone, nextVal).catch(() => undefined);
-          }}
+          onToggleHideNames={toggleHideNames}
           onToggleDemoMode={() => { if (DEMO_ALLOWED) setDemoMode((v) => !v); }}
           onDeleteAll={async () => {
             if (!demoMode) await recapApi.deleteAllData();
             if (scanPoller.current) clearInterval(scanPoller.current);
             scanPoller.current = null;
             setLiveRecaps({});
+            setTimezone('Europe/Moscow');
+            setHideChatNames(true);
             setScreen('welcome');
           }}
         />
       )}
+
+      </motion.div>
+      </AnimatePresence>
 
       {screen !== 'stories' && (
         <nav className="bottom-nav">

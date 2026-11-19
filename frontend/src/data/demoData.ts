@@ -126,3 +126,60 @@ export const DEMO_RECAP_BY_YEAR: Record<number, RecapStats> = {
     },
   },
 };
+
+
+/**
+ * 2024: explicitly synthetic demo dataset. Never used by Live API or mixed
+ * with saved results. All distributions sum to the corresponding total.
+ */
+function demoDistribution(total:number,weights:number[]):number[]{
+  const sum=weights.reduce((a,b)=>a+b,0);
+  if(!sum)return weights.map(()=>0);
+  let assigned=0;
+  return weights.map((weight,i)=>{
+    const value=i===weights.length-1?total-assigned:Math.floor(total*weight/sum);
+    assigned+=value;
+    return value;
+  });
+}
+const demo2024Base=DEMO_RECAP_BY_YEAR[2025];
+const demo2024Total=18624;
+const demo2024KindKeys=Object.keys(demo2024Base.byKind) as Array<keyof RecapStats['byKind']>;
+const demo2024Kinds=demoDistribution(demo2024Total,demo2024KindKeys.map(k=>demo2024Base.byKind[k]));
+const demo2024ByKind={} as RecapStats['byKind'];
+demo2024KindKeys.forEach((key,i)=>{demo2024ByKind[key]=demo2024Kinds[i];});
+DEMO_RECAP_BY_YEAR[2024]={
+  ...demo2024Base,
+  year:2024,
+  generatedAt:'2025-01-03T00:00:00Z',
+  totalMessages:demo2024Total,
+  activeDays:268,
+  longestStreakDays:37,
+  longestStreakRange:{start:'2024-05-01',end:'2024-06-06'},
+  byMonth:demoDistribution(demo2024Total,[1350,1280,1520,1590,1710,1960,2100,1850,1550,1510,1260,1440]),
+  byWeekday:demoDistribution(demo2024Total,[2600,2740,2820,2950,3200,2450,2300]),
+  byHour:demoDistribution(demo2024Total,[820,730,520,270,110,70,50,120,290,520,720,840,920,900,860,980,1050,1190,1320,1410,1470,1560,1220,980]),
+  byKind:demo2024ByKind,
+  voiceCount:demo2024ByKind.voice,
+  videoNoteCount:demo2024ByKind.video_note,
+  photoCount:demo2024ByKind.photo,
+  videoCount:demo2024ByKind.video,
+  stickerAndGifCount:demo2024ByKind.sticker+demo2024ByKind.gif,
+  voiceTotalDurationSec:21840,
+  topPrivateChats:[
+    {chatHash:'demo-2024-p1',displayLabel:'Друг',chatType:'private',sentMessages:4020},
+    {chatHash:'demo-2024-p2',displayLabel:'Подруга',chatType:'private',sentMessages:2470},
+    {chatHash:'demo-2024-p3',displayLabel:'Брат',chatType:'private',sentMessages:1680},
+  ],
+  topGroupChats:[
+    {chatHash:'demo-2024-g1',displayLabel:'Чат друзей',chatType:'group',sentMessages:1740},
+    {chatHash:'demo-2024-g2',displayLabel:'Учебная группа',chatType:'group',sentMessages:1210},
+  ],
+  persona:{
+    code:'steady_pulse',title:'Ровный пульс',
+    subtitle:'Твой ритм общения оставался устойчивым на протяжении года',
+    traits:['268 активных дней','Серия 37 дней','Дневная активность'],
+    basisMetrics:{nightShare:0.22,voiceShare:demo2024ByKind.voice/demo2024Total,visualShare:(demo2024ByKind.photo+demo2024ByKind.video)/demo2024Total,groupShare:0.15},
+  },
+  metrics:{apiRequestsCount:0,elapsedMs:0,floodWaitCount:0,floodWaitTotalSec:0,processedDialogs:66,totalEligibleDialogs:66,skippedDialogs:0,failedDialogs:0},
+};
