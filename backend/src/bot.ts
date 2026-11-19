@@ -11,6 +11,7 @@ interface TelegramUpdate {
     chat: { id: number };
     from?: { id: number; first_name?: string };
     text?: string;
+    contact?: { phone_number: string; user_id?: number };
   };
 }
 
@@ -48,11 +49,26 @@ function openRecapKeyboard(appUrl: string, path = '') {
 
 export async function handleBotUpdate(update: TelegramUpdate, env: BotEnv): Promise<void> {
   const msg = update.message;
-  if (!msg?.text || !msg.from) return;
+  if (!msg?.from) return;
+  if (msg.contact && msg.chat.id === msg.from.id &&
+      msg.contact.user_id === msg.from.id &&
+      /^\+?\d{7,15}$/.test(msg.contact.phone_number.replace(/[\s()-]/g, ''))) {
+    await env.DB.prepare(
+      `INSERT INTO phone_contact_requests (telegram_user_id, phone, expires_at)
+       VALUES (?, ?, ?) ON CONFLICT(telegram_user_id)
+       DO UPDATE SET phone = excluded.phone, expires_at = excluded.expires_at`
+    ).bind(msg.from.id, msg.contact.phone_number, new Date(Date.now() + 120000).toISOString()).run();
+    return;
+  }
+  if (!msg.text) return;
 
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const command = msg.text.trim().split(/\s+/)[0].toLowerCase().split('@')[0];
+  if (command === '/delete' && chatId !== userId) {
+    await sendTelegramMessage(env.BOT_TOKEN, chatId, 'Для удаления данных напиши /delete боту в личном чате.');
+    return;
+  }
 
   switch (command) {
     case '/start': {
@@ -86,22 +102,21 @@ export async function handleBotUpdate(update: TelegramUpdate, env: BotEnv): Prom
         env.BOT_TOKEN,
         chatId,
         statusNote,
-        openRecapKeyboard(env.APP_URL, '?screen=stories')
+        openRecapKeyboard(env.APP_URL, '?screen=reveal')
       );
       break;
     }
 
     case '/privacy': {
       const text = [
-        '<b>Конфиденциальность и безопасность RECAP</b>',
+        '<b>Приватность RECAP</b>',
         '',
-        '1. <b>Честно о правах доступа:</b> для подсчёта истории используется временная MTProto-сессия. Telegram не предоставляет режима «только чтение» для MTProto — технически сессия имеет широкие права аккаунта. Поэтому мы шифруем её в оперативном хранилище и пытаемся завершать через Telegram API (LogOut) после анализа или отмены. Результат отзыва рекомендуется проверять в списке устройств.',
-        '2. <b>Что НЕ сохраняется:</b> тексты сообщений, медиафайлы, коды входа, пароли 2FA и session strings.',
-        '3. <b>Что сохраняется:</b> только числовые агрегаты (счётчики по месяцам, часам, типам сообщений) строго для твоего Telegram ID.',
-        '4. <b>Никаких третьих сторон и ИИ:</b> твои данные не передаются сторонним сервисам и моделям.',
-        '5. Удалить всё можно в любой момент командой /delete.',
+        '• У MTProto нет режима «только чтение»: сессия технически имеет широкие права Telegram-аккаунта.',
+        '• Сессия шифруется AES-256-GCM и сохраняется на сервере анализа для обновления годов без нового входа. После скана соединение закрывается, но Telegram LogOut не вызывается.',
+        '• Тексты сообщений не сохраняем, медиа не скачиваем. В D1 храним статистику, настройки и технический прогресс. Переданный контакт удаляется после получения приложением или становится недействительным через 2 минуты.',
+        '• Отключить аккаунт и удалить всё можно в настройках Mini App или командой /delete. Для этого выполняем Telegram LogOut.',
+        '• Проверь активные сеансы: Telegram → Настройки → Устройства.',
       ].join('\n');
-
       await sendTelegramMessage(env.BOT_TOKEN, chatId, text);
       break;
     }
@@ -130,12 +145,13 @@ export async function handleBotUpdate(update: TelegramUpdate, env: BotEnv): Prom
         env.DB.prepare('DELETE FROM recap_results WHERE telegram_user_id = ?').bind(userId),
         env.DB.prepare('DELETE FROM scan_jobs WHERE telegram_user_id = ?').bind(userId),
         env.DB.prepare('DELETE FROM user_settings WHERE telegram_user_id = ?').bind(userId),
+        env.DB.prepare('DELETE FROM phone_contact_requests WHERE telegram_user_id = ?').bind(userId),
       ]);
 
       await sendTelegramMessage(
         env.BOT_TOKEN,
         chatId,
-        'Результаты и настройки RECAP удалены. Отзыв активных временных сессий запрошен; проверь также список устройств Telegram.'
+        'Результаты RECAP удалены. Telegram LogOut подтверждён. Проверь список устройств в настройках Telegram.'
       );
       break;
     }
