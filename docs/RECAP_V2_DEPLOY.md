@@ -1,43 +1,57 @@
-# RECAP v2 — выпуск с Android без компьютера
+# RECAP v2 · выпуск и приёмка на телефоне
 
-Изменения собраны в ветке recap-v2 и Pull Request #8. До проверки не сливайте PR в main и не обновляйте рабочий Worker/Scanner.
+## Статус исходников
 
-## 1. Подготовить постоянный том scanner
-У FastAPI/Telethon должен быть приватный persistent volume, примонтированный к /data (не эфемерный /tmp). Переменные:
-- SESSION_STORE_DIR=/data/recap_sessions
-- CHECKPOINT_DIR=/data/recap_checkpoints
-- SESSION_ENCRYPTION_KEY_B64 — прежний ключ AES-256-GCM, 32 байта в base64; не менять между деплоями.
-- TELEGRAM_API_ID, TELEGRAM_API_HASH, SCANNER_SHARED_SECRET остаются в защищённом окружении.
+Рабочая ветка — `main` репозитория `disfelz/recap-telegram-wrapped`. Старые инструкции о незамёрженном PR #8 и необходимости переносить `recap-v2` больше не актуальны. Архитектура: отдельно React Mini App (Cloudflare Pages), Cloudflare Worker + D1 и Python MTProto scanner (Render).
 
-Пользователь scanner должен иметь права записи в /data. Каталог session_store создаётся с режимом 0700, файлы — 0600. Без persistent volume чекпоинты будут потеряны при перезапуске. Временная MTProto-сессия автоматически отзывается по окончании скана; повторный анализ требует нового входа.
+Frontend публикуется из `frontend/`, командой `npm run build`. Worker — из `backend/`, scanner — из `scanner/`. Успешная публикация Pages **не означает**, что scanner уже работает с текущим коммитом.
 
-## 2. Сделать резервную копию D1 и мигрировать
-Откройте с Android браузера Cloudflare Dashboard → D1 → базу RECAP → Console. До деплоя v2 по очереди выполните SQL:
+## 1. Проверки перед выпуском
 
-    ALTER TABLE scan_jobs ADD COLUMN notified_at TEXT;
+Из корня репозитория:
 
-    CREATE TABLE IF NOT EXISTS phone_contact_requests (
-      telegram_user_id INTEGER PRIMARY KEY,
-      phone TEXT NOT NULL,
-      expires_at TEXT NOT NULL
-    );
+```bash
+npm --prefix frontend ci && npm --prefix frontend run build
+npm --prefix backend ci && npm --prefix backend run typecheck
+python -m pip install -r scanner/requirements.txt
+PYTHONPATH=. python -m pytest tests/test_analyzer.py tests/test_session_store.py tests/test_auth_errors.py tests/test_scan_logout.py -v
+```
 
-Это содержимое backend/migrations/0002_recap_v2.sql. Выполнять ALTER один раз. Не заменять миграцию повторным запуском backend/schema.sql и не удалять старые результаты.
+Cloudflare Pages может выполнять временную расширенную сборку, но перед публикацией вернуть обычную команду `npm run build`. Не путать успех Pages с зелёной GitHub Actions CI. Если GitHub Actions завершает задания до назначения runner (`runner_id: 0`, `steps: []`, 0 billable minutes), проверять **GitHub → Settings → Actions** и **Billing/Usage and spending limits**; исправление TypeScript/Python не поможет, пока runner не начинает работу.
 
-## 3. Проверить сборку и развернуть
-Откройте GitHub Pull Request #8 → Checks. Нужны зелёные scanner-tests, frontend-build, backend-typecheck и источник ZIP. Когда всё готово — сливайте PR и используйте существующий GitHub Actions/Cloudflare Pages и Render/Railway/Fly/VPS деплой. ПК не нужен.
+## 2. Подключения
 
-В Worker сохраняются BOT_TOKEN, BOT_WEBHOOK_SECRET, SCANNER_SHARED_SECRET, SCANNER_BASE_URL, APP_URL и привязка D1 DB. В Pages: VITE_API_BASE_URL — HTTPS Worker API, VITE_ENABLE_DEMO=false для production. APP_URL — HTTPS адрес Mini App без параметров, кнопка бота использует screen=reveal и year=YYYY.
+Убедись, что в Cloudflare Pages задан `VITE_API_BASE_URL` на рабочий Worker, а в Worker имеются `APP_URL`, `SCANNER_BASE_URL`, привязка D1 `DB` и секреты `BOT_TOKEN`, `BOT_WEBHOOK_SECRET`, `SCANNER_SHARED_SECRET`. Не публикуй значения секретов, `TELEGRAM_API_HASH`, `SESSION_ENCRYPTION_KEY_B64` и старые сессионные файлы.
 
-## 4. Приёмка на своём Telegram
-1. Новый пользователь → QR или номер → код/2FA → автозапуск анализа, счётчики чатов и сообщений.
-2. Закрыть Mini App и вернуться: сохранится активный статус задания из /api/me. При callback completed/partial приходит одно сообщение от бота.
-3. Открыть кнопку «Смотреть итоги года»: удержание, Stories, экспорт PNG без имён, аналитика.
-4. Запустить анализ другого года: нужно заново войти во временный сеанс (прошлый был автоматически закрыт). При продолжении частичного анализа используется прежний чекпоинт.
-5. Проверить /privacy; для тестового аккаунта выполнить /delete и удостовериться, что Telegram → Устройства больше не содержит сессию RECAP.
-6. Проверить отказ scanner и 2FA: ошибки должны отображаться без утечки секретов.
+Для scanner требуются постоянные каталоги `SESSION_STORE_DIR=/data/recap_sessions` и `CHECKPOINT_DIR=/data/recap_checkpoints` на приватном volume: без него не сохранятся курсоры частичных сканов после перезагрузки. Файлы сессий должны быть доступны только пользователю процесса (0700 каталог, 0600 файлы). После окончания сканирования зашифрованный файл удаляется; повторный анализ требует нового входа. Не оставляй лишние Render replicas с теми же Telegram credentials.
 
-Старые v1-сессии были отозваны: пользователю один раз понадобится новый вход для RECAP v2. Действующие результаты в D1 миграция не удаляет.
+До публичного показа ссылки «Открытый исходный код на GitHub» проверь историю Git на отсутствие любых реальных секретов. Только после безопасного перевода репозитория в публичный режим добавь в **Pages → Settings → Environment variables**:
+`VITE_GITHUB_REPO_URL=https://github.com/disfelz/recap-telegram-wrapped`.
+Затем перезапусти сборку Pages, чтобы переменная попала в bundle.
 
-## Исходники
-GitHub → репозиторий disfelz/recap-telegram-wrapped → ветка recap-v2 → Code → Download ZIP. Готовый ZIP всегда доступен через GitHub → ветка recap-v2 → Code → Download ZIP. Workflow проверяет, что ZIP успешно создаётся и его структура не повреждена; Artifact не загружается, чтобы не требовать квоту GitHub Actions.
+## 3. D1
+
+Перед миграциями создай резервную копию базы. Не запускай `backend/schema.sql` поверх существующей базы для пересоздания данных. Миграции из `backend/migrations/` применять по порядку, предварительно проверив таблицы и уже добавленные колонки. Минимум — таблица `phone_contact_requests` и колонка `scan_jobs.notified_at` из `0002_recap_v2.sql`, если они ещё отсутствуют.
+
+## 4. Реальная приёмка на Android
+
+Используй **собственный тестовый Telegram-аккаунт** с небольшой историей. Никому не сообщай коды входа и облачный пароль, не вставляй их в переписку с помощником.
+
+1. Открой Mini App без сохранённых итогов. Должен появиться экран «Твой настоящий год в Telegram», а не запрос номера.
+2. Выбери 2026 или 2025, нажми «Посмотреть живой пример», пройди «Удержи палец» и Stories. На каждом демо-экране указано «Пример», в финале есть «Посчитать мой год».
+3. Нажми «Узнать свой год», ознакомься с согласием и войди через свой номер либо QR; при включённой 2FA проверь ввод облачного пароля.
+4. Пока идёт расчёт, открой **Telegram → Настройки → Устройства**: временное устройство должно иметь понятное имя «RECAP · временный подсчёт». Проверь прогресс подсчёта, затем дождись статуса `completed`.
+5. Бот должен написать «Временный сеанс уже закрыт» **только если** Telegram подтвердил LogOut (`sessionClosed: true`). В списке активных устройств сеанса RECAP больше нет. Если LogOut не подтвердился, бот обязан честно предупредить.
+6. В рейтингах реальные имена собеседников не показываются: «Личный чат #1», «Группа #1». Export PNG не содержит ID или имён. Кнопки просмотра и отправки открытки работают.
+7. Запусти скан другого года: необходим новый временный вход. Если частичный скан прерван, повторный вход должен продолжить с чекпоинта без двойного подсчёта.
+8. Проверь ручную паузу и FloodWait: сеанс остаётся до возобновления или отмены. После отмены временное устройство должно исчезнуть из Telegram.
+9. Дополнительный сценарий: пройти вход и не начинать скан. Незадействованная авторизация должна автоматически отзываться через 10 минут (если scanner работает).
+10. Протестируй `/privacy` и `/delete` на тестовом аккаунте. Если LogOut не подтвердился, система не должна говорить об успешном отзыве и удалении.
+
+Если счётчики, callback, вход либо сессия ведут себя не так — **не запускай массовую рекламу**, пока ошибка не исправлена.
+
+## 5. Что означают три контура
+
+- Frontend получает только агрегированную статистику; демо-данные изолированы и не отправляются как реальные.
+- Cloudflare Worker проверяет Telegram `initData`, сохраняет агрегаты в D1 и отправляет уведомления через Bot API.
+- Python scanner единственный работает с MTProto; хранит только зашифрованную временную авторизацию и технические чекпоинты, затем вызывает `LogOutRequest()`. Неактивные авторизации отзываются через 10 минут, активный скан или пауза не затрагиваются.
