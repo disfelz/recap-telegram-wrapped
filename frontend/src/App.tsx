@@ -240,6 +240,7 @@ export default function App() {
       {appError && <div role="alert" className="card" style={{margin:16, borderColor:'rgba(255,209,122,.5)', fontSize:13}}>{appError}</div>}
       <AnimatePresence mode="wait" initial={false}>
       <motion.div key={screen}
+        style={{ position: 'relative', zIndex: screen === 'settings' ? 60 : screen === 'stories' ? 45 : 1 }}
         initial={reduceMotion ? { opacity: 0 } : screen === 'stories' ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.985 }}
         animate={reduceMotion || screen === 'stories' ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
         exit={reduceMotion || screen === 'stories' ? { opacity: 0 } : { opacity: 0, y: -12, scale: 0.99 }}
