@@ -8,15 +8,16 @@ import { recapApi } from './api/client';
 import { DEMO_RECAP_BY_YEAR } from './data/demoData';
 import { getTelegramWebApp, haptic, initTelegramMiniApp } from './utils/telegram';
 import { ConnectScreen } from './screens/ConnectScreen';
+import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ScanScreen } from './screens/ScanScreen';
 import { HoldScreen } from './screens/HoldScreen';
 import { StoriesScreen } from './screens/StoriesScreen';
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 
-type Screen = 'boot'|'connect'|'scan'|'hold'|'stories'|'analytics'|'settings';
+type Screen = 'boot'|'welcome'|'connect'|'scan'|'hold'|'stories'|'analytics'|'settings';
 const CURRENT_YEAR = new Date().getFullYear();
-const DEMO_ALLOWED = import.meta.env.VITE_ENABLE_DEMO === 'true';
+const DEMO_ALLOWED = true; // Isolated, explicitly labelled demo data.
 const ACTIVE = ['queued','auth_pending','quick_preview','scanning','paused_flood_wait','paused_user'];
 
 function defaultTimezone() {
@@ -44,7 +45,8 @@ export default function App(){
   const [progress,setProgress]=useState<ScanProgressPayload>(()=>initialProgress(initialYear()));
   const [error,setError]=useState<string|null>(null);
   const pollRef=useRef<ReturnType<typeof setInterval>|null>(null);
-  const autoStartRef=useRef(false);
+  const skipNextBootstrap=useRef(false);
+  const [resumeJobId,setResumeJobId]=useState<string|null>(null);
 
   const clearPoll=useCallback(()=>{
     if(pollRef.current!==null)clearInterval(pollRef.current);
@@ -95,6 +97,7 @@ export default function App(){
       const result=await recapApi.startScan(year,timezone,authId);
       if(!result.jobId)throw new Error('Сканер не вернул номер анализа');
       setAuthorized(true);
+      setResumeJobId(null);
       setProgress({...initialProgress(year),jobId:result.jobId});
       startPolling(result.jobId);
     }catch(e) {
@@ -113,12 +116,28 @@ export default function App(){
     }
   },[timezone,clearPoll,startPolling]);
 
+  const resumeExistingScan=useCallback(async(jobId:string,authId:string)=>{
+    setError(null);
+    clearPoll();
+    setProgress({...initialProgress(selectedYear),jobId});
+    setScreen('scan');
+    try {
+      const result=await recapApi.resumeScan(jobId,authId);
+      setResumeJobId(null);
+      startPolling(result.jobId||jobId);
+    }catch(e){
+      setError((e as Error).message||'Не удалось продолжить анализ');
+      setScreen('connect');
+    }
+  },[clearPoll,startPolling,selectedYear]);
+
   useEffect(()=>{
     const cleanupTelegram=initTelegramMiniApp();
     return ()=>{cleanupTelegram();clearPoll();};
   },[clearPoll]);
   useEffect(()=>{
     if(demoMode)return;
+    if(skipNextBootstrap.current){skipNextBootstrap.current=false;return;}
     let disposed=false;
     setScreen('boot');
     (async()=>{
@@ -146,16 +165,12 @@ export default function App(){
           setScreen(direct==='analytics'?'analytics':'hold');
           return;
         }
-        if(me.authorized){
-          if(!autoStartRef.current){
-            autoStartRef.current=true;
-            await startScan(requested);
-          }
-        }else setScreen('connect');
+        // First-time users see a transparent welcome, never a surprise phone form.
+        setScreen('welcome');
       }catch(e){
         if(!disposed){
           setError((e as Error).message||'Не удалось подключиться к серверу');
-          setScreen('connect');
+          setScreen('welcome');
         }
       }
     })();
@@ -172,71 +187,68 @@ export default function App(){
   const openAnalytics=()=>setScreen('analytics');
   const openStories=()=>stats?setScreen('stories'):setScreen('analytics');
   const requestAnalysis=()=>{
-    if(demoMode){setError('В демонстрации нельзя пересчитывать настоящие данные. Переключи режим в настройках.');return;}
-    if(authorized)void startScan(selectedYear);
-    else setScreen('connect');
+    if(demoMode){exitDemoToConnect();return;}
+    setResumeJobId(null);setError(null);setScreen('connect');
+    void recapApi.getScanStatus().then(({job})=>{
+      if(job && job.year===selectedYear && job.status==='partial')setResumeJobId(job.jobId);
+    }).catch(()=>undefined);
   };
   const toggleHideNames=()=>{
-    const value=!hideChatNames;
-    setHideChatNames(value);
-    if(!demoMode){
-      void recapApi.updateSettings(timezone,value).catch(e=>setError((e as Error).message));
-      if(!value){
-        // Only resolve real chat names on an explicit reveal gesture.
-        // Names live in memory and never in saved RecapStats / PNG exports.
-        void recapApi.getChatNames(selectedYear).then(({names})=>{
-          setRecaps(prev=>{
-            const item=prev[selectedYear];
-            if(!item)return prev;
-            const withName=(list:typeof item.topPrivateChats)=>
-              list.map(chat=>({...chat,displayLabel:names[chat.chatHash]||chat.displayLabel}));
-            return {...prev,[selectedYear]:{...item,
-              topPrivateChats:withName(item.topPrivateChats),
-              topGroupChats:withName(item.topGroupChats)}};
-          });
-        }).catch(e=>setError((e as Error).message));
-      }
-    }
+    // Temporary access is revoked after scanning; masks remain for privacy.
+    setHideChatNames(true);
   };
   const handleYearChange=(year:number)=>{
     setSelectedYear(year);
     setError(null);
     if(!data[year] && screen==='hold')setScreen('analytics');
   };
-  const toggleDemo=()=>{
-    if(!DEMO_ALLOWED)return;
-    clearPoll();
-    if(!demoMode){
-      setDemoMode(true);setSelectedYear(CURRENT_YEAR);setScreen('hold');setError(null);
-    }else{
-      setDemoMode(false);setScreen('boot');setError(null);autoStartRef.current=false;
-    }
+  const openDemo=()=>{
+    clearPoll();setError(null);setDemoMode(true);setResumeJobId(null);setScreen('hold');
   };
+  const exitDemoToConnect=()=>{
+    skipNextBootstrap.current=true;setDemoMode(false);setError(null);setScreen('connect');
+  };
+  const toggleDemo=()=>{if(demoMode)exitDemoToConnect();else openDemo();};
   useEffect(()=>{
     const back=getTelegramWebApp()?.BackButton;
     if(!back)return;
     const goBack=()=>{
       haptic('light');
-      if(screen==='stories'||screen==='settings')setScreen('analytics');
+      if(screen==='stories'&&demoMode)setScreen('welcome');
+      else if(screen==='stories'||screen==='settings')setScreen('analytics');
+      else if(screen==='connect')setScreen('welcome');
       else if(screen==='analytics'&&stats)setScreen('hold');
     };
-    if(screen==='stories'||screen==='settings'||screen==='analytics') {
+    if(screen==='stories'||screen==='settings'||screen==='analytics'||screen==='connect') {
       back.show();back.onClick(goBack);
     }else back.hide();
     return()=>back.offClick(goBack);
-  },[screen,stats]);
+  },[screen,stats,demoMode]);
 
   return <div className={'app-shell v2-app v2-screen-'+screen}>
     {error&&<div className="v2-error" role="alert">
       <span>{error}</span><button type="button" onClick={()=>setError(null)} aria-label="Закрыть">×</button>
     </div>}
     {screen==='boot'&&<main className="v2-boot" role="status"><span className="v2-loader"/>Открываем RECAP…</main>}
+    {screen==='welcome'&&<WelcomeScreen
+      selectedYear={selectedYear}
+      availableYears={availableYears.filter(year=>year===CURRENT_YEAR||year===CURRENT_YEAR-1)}
+      onSelectYear={handleYearChange}
+      onStartConnect={()=>{setResumeJobId(null);setScreen('connect');}}
+      hasSavedRecap={Boolean(recaps[selectedYear])}
+      onOpenSavedRecap={()=>setScreen('hold')}
+      onOpenDemoStories={openDemo}
+      demoEnabled={true}
+    />}
     {screen==='connect'&&<ConnectScreen
       selectedYear={selectedYear}
       availableYears={availableYears}
       onSelectYear={handleYearChange}
-      onAuthorized={async(authId)=>{await startScan(selectedYear,authId);}}
-      onShowDemo={DEMO_ALLOWED?toggleDemo:undefined}
+      onAuthorized={async(authId)=>{
+        if(resumeJobId)await resumeExistingScan(resumeJobId,authId);
+        else await startScan(selectedYear,authId);
+      }}
+      onShowDemo={openDemo}
     />}
     {screen==='scan'&&<ScanScreen progress={progress}
       onCancel={async()=>{
@@ -253,16 +265,21 @@ export default function App(){
           setProgress({...initialProgress(progress.year),jobId:result.jobId || progress.jobId});
           setScreen('scan');
           startPolling(result.jobId || progress.jobId);
-        }catch(e){setError((e as Error).message || 'Не удалось продолжить анализ');}
+        }catch(e){
+          setResumeJobId(progress.jobId);
+          setScreen('connect');
+          setError('Временный сеанс закрыт. Войди снова — продолжим с сохранённого места.');
+        }
       }}
       onOpenResults={()=>{setSelectedYear(progress.year);setScreen('hold');}}
     />}
     {screen==='hold'&&stats&&<HoldScreen key={selectedYear+(demoMode?'-demo':'-live')}
-      year={selectedYear} partial={stats.completionStatus==='partial'}
+      year={selectedYear} partial={stats.completionStatus==='partial'} demo={demoMode}
       onReveal={()=>setScreen('stories')}/>}
     {screen==='stories'&&stats&&<StoriesScreen stats={stats}
-      hideChatNames={hideChatNames} onToggleHideNames={toggleHideNames}
-      onClose={openAnalytics}/>}
+      hideChatNames={true} onToggleHideNames={toggleHideNames}
+      demo={demoMode} onStartReal={exitDemoToConnect}
+      onClose={demoMode?()=>setScreen('welcome'):openAnalytics}/>}
     {screen==='analytics'&&<div className="v2-hub">
       <header className="v2-hub-nav">
         <button type="button" className="active" onClick={()=>setScreen('analytics')}><BarChart3 size={17}/> Аналитика</button>
@@ -301,7 +318,7 @@ export default function App(){
         onDeleteAll={async()=>{
           if(!demoMode)await recapApi.deleteAllData();
           clearPoll();setRecaps({});setAuthorized(false);
-          setSelectedYear(CURRENT_YEAR);setHideChatNames(true);setScreen('connect');
+          setSelectedYear(CURRENT_YEAR);setHideChatNames(true);setScreen('welcome');
         }}
       />
     </div>}
