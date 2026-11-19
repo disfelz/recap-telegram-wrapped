@@ -179,7 +179,7 @@ export default {
                 reply_markup: {
                   inline_keyboard: [[{
                     text: 'Открыть RECAP',
-                    web_app: { url: `${env.APP_URL}?screen=stories` },
+                    web_app: { url: `${env.APP_URL}?screen=stories&year=${payload.year}` },
                   }]],
                 },
               }),
