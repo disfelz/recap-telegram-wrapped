@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, KeyRound, Lock, QrCode, Shie
 import { recapApi } from '../api/client';
 import { QrMatrix } from '../components/QrMatrix';
 import { haptic, requestOwnContact } from '../utils/telegram';
+import { normalizePhoneNumber } from '../utils/phone';
 
 interface Props {
   selectedYear:number;
@@ -19,6 +20,8 @@ export const ConnectScreen:React.FC<Props>=({
 })=>{
   const [step,setStep]=useState<Step>('phone');
   const [consent,setConsent]=useState(false);
+  const [consentAttempt,setConsentAttempt]=useState(0);
+  const consentRef=useRef<HTMLLabelElement|null>(null);
   const [phone,setPhone]=useState('');
   const [code,setCode]=useState('');
   const [password,setPassword]=useState('');
@@ -45,12 +48,22 @@ export const ConnectScreen:React.FC<Props>=({
     doneRef.current=true;setPassword('');setCode('');
     haptic('success');void authorized.current(id);
   },[]);
+  const requireConsent=useCallback(()=>{
+    if(consent)return true;
+    setError('Сначала подтверди согласие на анализ.');
+    setConsentAttempt(value=>value+1);
+    haptic('heavy');
+    consentRef.current?.scrollIntoView({behavior:'smooth',block:'center'});
+    consentRef.current?.querySelector('input')?.focus({preventScroll:true});
+    return false;
+  },[consent]);
   const beginPhone=useCallback(async(number:string)=>{
-    if(!consent){setError('Подтверди согласие под кнопкой.');return;}
+    if(!requireConsent())return;
     if(busyRef.current)return;
     busyRef.current=true;setLoading(true);setError('');
     try {
-      const clean=number.replace(/[\s()-]/g,'');
+      const clean=normalizePhoneNumber(number);
+       setPhone(clean);
       if(!/^\+\d{7,15}$/.test(clean))throw Error('Введи номер с кодом страны, например +79991234567.');
       const result=await recapApi.startPhoneAuth(clean,true);
       if(!mounted.current)return;
@@ -59,10 +72,10 @@ export const ConnectScreen:React.FC<Props>=({
       setTimeout(()=>codeRefs.current[0]?.focus(),70);
     }catch(e){if(mounted.current)setError((e as Error).message||'Не удалось отправить код.');}
     finally{busyRef.current=false;if(mounted.current)setLoading(false);}
-  },[consent]);
+  },[requireConsent]);
 
   const sharePhone=async()=>{
-    if(!consent){setError('Подтверди согласие под кнопкой.');return;}
+    if(!requireConsent())return;
     setError('');
     setContactBusy(true);
     const shared=await requestOwnContact();
@@ -77,8 +90,9 @@ export const ConnectScreen:React.FC<Props>=({
         if(!mounted.current)return;
         const {phone:received}=await recapApi.pickupPhoneContact();
         if(received){
-          setPhone(received);setContactBusy(false);
-          await beginPhone(received);return;
+          const normalized=normalizePhoneNumber(received);
+          setPhone(normalized);setContactBusy(false);
+          await beginPhone(normalized);return;
         }
         await sleep(1000);
       }
@@ -200,8 +214,8 @@ export const ConnectScreen:React.FC<Props>=({
             {loading?'Отправляем…':'Получить код'} <ArrowRight size={17}/>
           </button>
         </form>
-        <label className="v2-agree"><input type="checkbox" checked={consent}
-          onChange={e=>setConsent(e.target.checked)}/>
+        <label key={consentAttempt} ref={consentRef} className={'v2-agree'+(!consent&&consentAttempt>0?' v2-agree-attention':'')}><input type="checkbox" checked={consent}
+          onChange={e=>{setConsent(e.target.checked);if(e.target.checked){setConsentAttempt(0);setError('');}}}/>
           <span>Я понимаю, что MTProto имеет доступ к аккаунту, и согласен на анализ.</span>
         </label>
         <button type="button" className="v2-privacy-link" onClick={()=>setSecurityOpen(true)}>
@@ -242,7 +256,7 @@ export const ConnectScreen:React.FC<Props>=({
     </section>
     <footer className="v2-connect-footer">
       {step==='phone'&&<button className="v2-text-btn" type="button"
-        onClick={()=>{if(!consent){setError('Сначала подтверди согласие.');return;}setQrOpen(true);}}>
+        onClick={()=>{if(requireConsent())setQrOpen(true);}}>
         <QrCode size={17}/> Войти с другого устройства по QR
       </button>}
       {onShowDemo&&<button type="button" className="v2-demo-link" onClick={onShowDemo}>Посмотреть демо</button>}
