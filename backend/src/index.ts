@@ -90,7 +90,7 @@ export default {
         jobId: string; telegramUserId: number; year: number; timezone: string;
         status: string; stage: string; processedDialogs: number; totalEligibleDialogs: number;
         outgoingFound: number; floodWaitUntil?: string | null; errorMessage?: string | null;
-        stats?: Record<string, unknown> | null;
+        stats?: Record<string, unknown> | null; sessionClosed?: boolean;
       };
       const final = payload.status === 'completed' || payload.status === 'partial';
       if (!payload.jobId || !Number.isSafeInteger(payload.telegramUserId) ||
@@ -168,9 +168,13 @@ export default {
           const target = new URL(env.APP_URL);
           target.searchParams.set('screen', 'reveal');
           target.searchParams.set('year', String(payload.year));
-          const message = payload.status === 'partial'
-            ? `Часть статистики за ${payload.year} год готова — некоторые чаты оказались недоступны, но твои основные итоги уже собраны.`
-            : `Твой RECAP за ${payload.year} год готов! Открывай и смотри, каким был твой год в Telegram.`;
+          const base = payload.status === 'partial'
+            ? `Часть статистики за ${payload.year} год готова. Некоторые чаты оказались недоступны.`
+            : `Твой RECAP за ${payload.year} год готов!`;
+          const sessionNote = payload.sessionClosed === true
+            ? 'Временный сеанс уже закрыт — можешь проверить в Настройки → Устройства.'
+            : 'Не удалось автоматически подтвердить выход — на всякий случай проверь Настройки → Устройства.';
+          const message = base + ' ' + sessionNote;
           try {
             const response = await fetch(
               `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
@@ -323,21 +327,9 @@ export default {
           'SELECT stats_json FROM recap_results WHERE telegram_user_id = ? AND year = ?'
         ).bind(user.id, year).first<{ stats_json: string }>();
         if (!recap) return jsonResponse({ error: 'Нет статистики за этот год' }, 404, corsOrigin);
-        const stats = JSON.parse(recap.stats_json) as {
-          topPrivateChats: Array<{chatHash:string}>;
-          topGroupChats: Array<{chatHash:string}>;
-        };
-        const hashes = [...new Set([
-          ...(stats.topPrivateChats || []).map(c => c.chatHash),
-          ...(stats.topGroupChats || []).map(c => c.chatHash),
-        ])].filter(h => /^[0-9a-f]{16}$/.test(h)).slice(0,20);
-        try {
-          return await proxyToScanner(env, '/internal/chats/resolve', 'POST', {
-            telegram_user_id: user.id, chat_hashes: hashes,
-          });
-        } catch {
-          return jsonResponse({ error: 'Не удалось получить названия переписок' }, 503, corsOrigin);
-        }
+        // Never re-open MTProto after completed or partial scan. Existing API
+        // contract stays intact; callers display local non-identifying masks.
+        return jsonResponse({ names: {} }, 200, corsOrigin);
       }
 
       if (url.pathname === '/api/auth/contact/pickup' && request.method === 'GET') {
@@ -466,7 +458,13 @@ export default {
       if (url.pathname === '/api/scan/resume' && request.method === 'POST') {
         const body = (await request.json()) as { jobId?: string; authId?: string };
         if (!body.jobId) {
-          return jsonResponse({ error: 'Не указано задание или авторизация' }, 400, corsOrigin);
+          return jsonResponse({ error: 'Не указано задание' }, 400, corsOrigin);
+        }
+        if (!body.authId || typeof body.authId !== 'string') {
+          return jsonResponse({
+            error: 'Временный сеанс закрыт. Для продолжения войди в Telegram ещё раз.',
+            requiresAuth: true
+          }, 409, corsOrigin);
         }
         const previous = await env.DB.prepare(
           `SELECT year, timezone, status FROM scan_jobs WHERE id = ? AND telegram_user_id = ?`
