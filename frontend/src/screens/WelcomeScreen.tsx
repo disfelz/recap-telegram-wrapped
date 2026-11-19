@@ -61,7 +61,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       </section>
 
       <section className="flagship-year-block" aria-label="Выбор года">
-        <div className="flagship-year-caption"><span>ВЫБЕРИ ГОД</span><span>2026 / 2025</span></div>
+        <div className="flagship-year-caption"><span>ВЫБЕРИ ГОД</span><span>{availableYears.join(' / ')}</span></div>
         <div className="flagship-year-list">
           {availableYears.map((year)=><button type="button" key={year} aria-pressed={selectedYear===year}
             onClick={()=>{haptic('selection');onSelectYear(year);}}>
