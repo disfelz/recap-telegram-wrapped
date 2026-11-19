@@ -60,12 +60,9 @@ export const SettingsScreen:React.FC<Props>=({
     </section>
     <section className="flagship-settings-section">
       <div className="flagship-setting-row">
-        <div><div className="flagship-setting-title"><LockKeyhole size={17}/><h2>Скрывать имена собеседников</h2></div>
-          <p>В рейтингах аналитики и Stories. Экспорт PNG всегда создаётся без имён и ID.</p></div>
-        <label className="flagship-switch" aria-label="Скрывать имена собеседников">
-          <input type="checkbox" checked={hideChatNames} onChange={()=>{haptic('selection');onToggleHideNames();}}/>
-          <span className="flagship-switch-track"><span/></span>
-        </label>
+        <div><div className="flagship-setting-title"><LockKeyhole size={17}/><h2>Имена собеседников скрыты</h2></div>
+          <p>В рейтингах используются «Личный чат #1» и «Группа #1». После автоматического выхода названия недоступны. В PNG имён и ID нет.</p></div>
+        <ShieldCheck size={20} aria-hidden="true"/>
       </div>
     </section>
     {demoAllowed&&<section className="flagship-settings-section">
@@ -83,7 +80,7 @@ export const SettingsScreen:React.FC<Props>=({
       <div className="flagship-security-facts">
         <p><span>01</span> Анализируются только твои отправленные сообщения и метаданные.</p>
         <p><span>02</span> Тексты переписок и медиафайлы не сохраняются в RECAP.</p>
-        <p><span>03</span> MTProto-сессия шифруется AES-256-GCM и остаётся для обновлений без повторного входа. У MTProto нет режима «только чтение»: сессия имеет широкие права. LogOut выполняется только после явного отключения.</p>
+        <p><span>03</span> Временный MTProto-сеанс шифруется AES-256-GCM и нужен только на время подсчёта (обычно 1–3 минуты, иногда дольше). После результата, отмены или ошибки RECAP вызывает Telegram LogOut и удаляет файл. Если Telegram не подтвердит выход, мы предупредим. Во время паузы сеанс активен. У MTProto нет режима «только чтение»: доступ технически широкий.</p>
         <p><span>04</span> Статистика хранится в Cloudflare D1 до удаления.</p>
       </div>
     </section>
@@ -104,7 +101,7 @@ export const SettingsScreen:React.FC<Props>=({
           <div className="flagship-modal-icon"><AlertTriangle size={25}/></div>
           <span className="flagship-eyebrow">НЕОБРАТИМОЕ ДЕЙСТВИЕ</span>
           <h2 id="flagship-confirm-title">Удалить свою историю из RECAP?</h2>
-          <p>Сохранённые результаты и настройки будут удалены. Если идёт анализ, он будет остановлен. RECAP выполнит Telegram LogOut для сохранённой сессии. Это не удаляет сообщения из Telegram.</p>
+          <p>Сохранённые результаты и настройки будут удалены. Если идёт анализ, он будет остановлен. RECAP отзовёт временный сеанс, если он ещё активен. Это не удаляет сообщения из Telegram.</p>
           {error&&<div className="flagship-inline-error" role="alert">{error}</div>}
           <div className="flagship-modal-actions">
             <button type="button" className="btn btn-secondary" disabled={deleting} onClick={()=>setConfirmDelete(false)}>Оставить</button>

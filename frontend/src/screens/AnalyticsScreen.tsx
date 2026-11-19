@@ -25,7 +25,7 @@ function Chats({items,hidden,group}:{items:TopChatStat[];hidden:boolean;group:bo
   const max=Math.max(1,...items.map((x)=>x.sentMessages));
   return <div className="ref-chats">{items.length===0 && <p className="ref-sub">Нет доступных данных</p>}
     {items.slice(0,5).map((x,i)=><div key={x.chatHash} className="ref-chat">
-      <div><span>{hidden?(group?'Группа ':'Личный чат ')+(i+1):x.displayLabel}</span><b title={fmt(x.sentMessages)+' '+pluralRu(x.sentMessages,['сообщение','сообщения','сообщений'])}>{fmt(x.sentMessages)}</b></div>
+      <div><span>{(group?'Группа #':'Личный чат #')+(i+1)}</span><b title={fmt(x.sentMessages)+' '+pluralRu(x.sentMessages,['сообщение','сообщения','сообщений'])}>{fmt(x.sentMessages)}</b></div>
       <div className="ref-track"><span className={group?'ref-blue':''} style={{width:x.sentMessages/max*100+'%'}} /></div>
     </div>)}
   </div>;
@@ -129,10 +129,7 @@ export const AnalyticsScreen:React.FC<Props>=({
     </section>
     <section className="ref-panel">
       <div className="ref-header-row"><div><h2>Топ переписок (исходящие)</h2><p>Личные и групповые отдельно</p></div>
-        <button type="button" className="ref-eye" onClick={()=>{onToggleHideNames();haptic('light');}}>
-          {hideChatNames?<Eye size={14}/>:<EyeOff size={14}/>}
-          {hideChatNames?'Открыть':'Скрыть'}
-        </button></div>
+        <span className="v2-masked-note"><EyeOff size={14}/> Имена скрыты</span></div>
       <h3 className="ref-category">ЛИЧНЫЕ ЧАТЫ</h3><Chats items={stats.topPrivateChats} hidden={hideChatNames} group={false}/>
       <h3 className="ref-category ref-groups">ГРУППЫ</h3><Chats items={stats.topGroupChats} hidden={hideChatNames} group={true}/>
     </section>
