@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
+from contextlib import asynccontextmanager, suppress
 from typing import Dict, Optional
 
 import httpx
@@ -22,13 +23,34 @@ session_store = EncryptedSessionStore(settings.session_store_dir, cipher)
 auth_manager = MTProtoAuthManager(settings.telegram_api_id, settings.telegram_api_hash, cipher, session_store)
 checkpoint_store = CheckpointStore(settings.checkpoint_dir)
 
-app = FastAPI(title="RECAP MTProto Scanner", docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Revoke unused logins even when the user never starts a scan."""
+    maintenance = asyncio.create_task(_cleanup_idle_sessions())
+    try:
+        yield
+    finally:
+        maintenance.cancel()
+        with suppress(asyncio.CancelledError):
+            await maintenance
+
+
+app = FastAPI(title="RECAP MTProto Scanner", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 scan_semaphore = asyncio.Semaphore(settings.max_concurrent_scans)
 active_cancel_events: Dict[str, asyncio.Event] = {}
 active_resume_events: Dict[str, asyncio.Event] = {}
 active_job_user_ids: Dict[str, int] = {}
 active_tasks: Dict[str, asyncio.Task] = {}
+
+
+async def _cleanup_idle_sessions() -> None:
+    while True:
+        try:
+            await auth_manager.expire_idle_sessions(set(active_job_user_ids.values()))
+        except Exception:
+            logger.error("Temporary MTProto session cleanup failed")
+        await asyncio.sleep(60)
 
 
 def verify_internal_token(authorization: str = Header(default="")) -> None:

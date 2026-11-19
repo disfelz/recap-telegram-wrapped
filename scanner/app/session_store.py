@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from .crypto import EphemeralSessionCipher
@@ -48,3 +49,22 @@ class EncryptedSessionStore:
 
     def has_session(self, telegram_user_id: int) -> bool:
         return self.load(telegram_user_id) is not None
+
+    def expired_user_ids(self, idle_seconds: float = 600, *, now: float | None = None) -> list[int]:
+        """Find orphaned encrypted credentials without decrypting their contents.
+
+        A scanner restart must not make an unfinished Telegram login permanent.
+        Only the encrypted session files are considered, never checkpoints.
+        """
+        cutoff = (time.time() if now is None else now) - idle_seconds
+        expired: list[int] = []
+        for path in self._dir.glob("*.session.enc"):
+            user_part = path.name.removesuffix(".session.enc")
+            if not user_part.isdecimal() or int(user_part) <= 0:
+                continue
+            try:
+                if path.stat().st_mtime < cutoff:
+                    expired.append(int(user_part))
+            except FileNotFoundError:
+                continue
+        return expired

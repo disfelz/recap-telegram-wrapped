@@ -50,3 +50,14 @@ def test_expired_scan_session_file_is_removed_from_disk(tmp_path):
     assert store.load(987) is None
     # Deleting an already revoked session is safe and idempotent.
     store.delete(987)
+
+
+def test_expired_sessions_find_only_old_credentials(tmp_path):
+    import time
+    store = make_store(tmp_path)
+    store.save(1001, "OLD-SESSION")
+    store.save(1002, "NEW-SESSION")
+    fake_now = time.time()
+    os.utime(store._path(1001), (fake_now - 700, fake_now - 700))
+    assert store.expired_user_ids(600, now=fake_now) == [1001]
+    assert store.load(1002) == "NEW-SESSION"

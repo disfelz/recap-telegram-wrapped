@@ -220,3 +220,23 @@ async def test_explicit_revoke_retry_keeps_credential_when_telegram_fails(config
 
     assert restored.logouts == 1
     assert not store._path(user_id).exists()
+
+
+@pytest.mark.asyncio
+async def test_abandoned_authorization_is_revoked_but_paused_scan_is_preserved(configured_server, monkeypatch):
+    import time
+    _server, manager, store = configured_server
+    old_id, paused_id = 845106, 845107
+    store.save(old_id, "ABANDONED-SESSION")
+    store.save(paused_id, "PAUSED-SCAN-SESSION")
+    now = time.time()
+    os.utime(store._path(old_id), (now - 700, now - 700))
+    os.utime(store._path(paused_id), (now - 700, now - 700))
+    client = FakeTelegramClient()
+    monkeypatch.setattr(manager, "_new_client", lambda session_str="": client)
+
+    await manager.expire_idle_sessions({paused_id}, idle_seconds=600)
+
+    assert client.logouts == 1
+    assert not store._path(old_id).exists()
+    assert store._path(paused_id).is_file()

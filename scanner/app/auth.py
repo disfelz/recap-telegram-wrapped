@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from telethon import TelegramClient
 from fastapi import HTTPException
@@ -265,6 +265,21 @@ class MTProtoAuthManager:
             # Pending login clients are not yet authorized; disconnect the transport.
             await state.client.disconnect()
             state.encrypted_session = None
+
+    async def expire_idle_sessions(self, active_users: Set[int], idle_seconds: float = 600) -> None:
+        """Clean up logins abandoned before scan start, including after restarts.
+
+        An active scan or a paused scan is never expired. This method is
+        triggered by the scanner lifecycle, independently of user requests.
+        """
+        for user_id in self._store.expired_user_ids(idle_seconds):
+            if user_id in active_users:
+                continue
+            try:
+                await self.close_scan_session(user_id)
+            except Exception:
+                # The maintenance loop will retry; no credentials in logs.
+                pass
 
     async def close_scan_session(self, telegram_user_id: int, client: Optional[TelegramClient] = None) -> bool:
         """Revoke the temporary MTProto authorization and erase its on-disk secret.
