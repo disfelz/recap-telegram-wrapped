@@ -248,3 +248,57 @@ body{background:#09090f}
 .recap-empty-panel .btn{width:100%;min-height:48px;text-align:center}
 @media(max-height:710px){.recap-export-dialog{padding:12px;gap:8px}.recap-export-preview{max-height:45dvh}.recap-export-head h2{font-size:18px}}
 @media(max-width:370px){.recap-export-actions .btn{font-size:10px}.recap-empty-panel h2{font-size:20px}}
+
+
+/* RECAP scan v2 — progress is a grounded percentage of completed chats. */
+.recap-scan-v2{padding:calc(17px + env(safe-area-inset-top,0px)) 18px 26px}
+.recap-scan-header{margin-bottom:16px}
+.recap-scan-header h1{font:700 clamp(24px,7vw,31px)/1.14 var(--font-display);letter-spacing:-.9px;margin:6px 0 5px;color:#f7f5ff}
+.recap-scan-header p{font-size:12px;line-height:1.5;color:#9693ab;margin:0}
+.recap-scan-badges{display:flex;justify-content:space-between;align-items:center;gap:9px;margin:0 0 15px;min-width:0}
+.recap-scan-badge{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:0;white-space:nowrap;padding:8px 10px;border:1px solid rgba(169,150,255,.20);border-radius:100px;background:rgba(21,19,34,.77);font-size:clamp(9px,2.7vw,11px);font-weight:650;color:#9693ab}
+.recap-scan-badge.connected{background:rgba(169,150,255,.15);border-color:rgba(169,150,255,.42);color:#b8a7ff;box-shadow:0 0 17px rgba(169,150,255,.09)}
+.recap-scan-badge svg{flex-shrink:0}
+.recap-scan-progress-card{padding:20px 15px 23px;text-align:center;background:linear-gradient(155deg,rgba(25,21,38,.97),rgba(18,16,31,.97));border:1px solid rgba(169,150,255,.16);border-radius:28px;box-shadow:0 14px 45px rgba(0,0,0,.13);overflow:hidden}
+.recap-scan-radar{position:relative;display:grid;place-items:center;width:min(70vw,250px);height:min(70vw,250px);margin:0 auto 11px}
+.recap-scan-radar svg{display:block;position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 0 5px rgba(169,150,255,.18))}
+.recap-scan-orb{position:absolute;width:72%;height:72%;border-radius:50%;background:radial-gradient(circle,rgba(139,113,255,.13),transparent 68%);pointer-events:none}
+.recap-scan-radar-center{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.recap-scan-percent{font:700 clamp(48px,14.6vw,67px)/1 var(--font-display);letter-spacing:-3.5px;color:#f7f5ff;display:inline-flex;align-items:baseline;white-space:nowrap}
+.recap-scan-percent>span:last-child{font:inherit;letter-spacing:-3px}
+.recap-scan-year{font-size:12px;letter-spacing:3px;color:#9693ab}
+.recap-scan-current{font-size:clamp(13px,3.3vw,16px);font-weight:650;color:#ede9ff;line-height:1.46;min-height:20px;margin:8px 0 5px}
+.recap-scan-description{font-size:11px;line-height:1.65;color:#a9a4bd;max-width:330px;margin:0 auto}
+.recap-scan-live-status{display:inline-flex;align-items:center;gap:7px;color:#9693ab;font-size:10px;line-height:1.5;margin-top:12px}
+.recap-scan-stages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.recap-scan-stage{min-height:107px;display:flex;flex-direction:column;justify-content:space-between;gap:13px;padding:15px 13px;background:rgba(21,19,34,.9);border:1px solid rgba(169,150,255,.18);border-radius:21px}
+.recap-scan-stage.current{border-color:rgba(133,184,255,.53);background:linear-gradient(135deg,rgba(48,65,83,.41),rgba(25,26,45,.94));box-shadow:inset 0 0 22px rgba(133,184,255,.025)}
+.recap-scan-stage.finished{border-color:rgba(122,232,184,.31)}
+.recap-scan-stage-top{display:flex;justify-content:space-between;gap:6px;align-items:center;color:#a996ff;font:700 11px/1.1 var(--font-display);letter-spacing:.5px}
+.recap-scan-stage.finished .recap-scan-stage-top{color:#7ae8b8}
+.recap-scan-stage.current .recap-scan-stage-top{color:#85b8ff}
+.recap-scan-stage strong{font-size:13px;line-height:1.45;color:#f4f0ff;letter-spacing:-.2px}
+.recap-scan-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:13px}
+.recap-scan-stat{border-radius:21px;padding:18px 15px 17px;background:#151322;border:1px solid rgba(169,150,255,.16);min-width:0}
+.recap-scan-stat>span{display:block;white-space:nowrap;color:#9693ab;font-size:clamp(9px,2.55vw,11px);letter-spacing:.55px;font-weight:700;margin-bottom:13px}
+.recap-scan-stat strong{display:flex;align-items:baseline;white-space:nowrap;gap:2px;min-width:0;font:700 clamp(22px,6.8vw,34px)/1.15 var(--font-display);letter-spacing:-1px}
+.recap-scan-stat strong.purple{color:#b9a8ff}
+.recap-scan-stat small{font-size:clamp(13px,4vw,19px);font-weight:500;letter-spacing:0;color:#9693ab}
+.recap-scan-notice,.recap-scan-background{display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding:12px 13px;border-radius:15px;background:rgba(169,150,255,.07);border:1px solid rgba(169,150,255,.13);color:#b6accb;font-size:11px;line-height:1.55}
+.recap-scan-notice{color:#ffd17a;border-color:rgba(255,209,122,.23);background:rgba(255,209,122,.06)}
+.recap-scan-notice svg,.recap-scan-background svg{flex-shrink:0;margin-top:1px}
+.recap-scan-background svg{color:#a996ff}
+.recap-scan-controls{margin-top:14px}
+.recap-scan-control-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.recap-scan-control-grid .btn{border-radius:19px;min-height:53px;font-size:14px;gap:8px}
+.recap-scan-control-grid .btn-secondary{background:#151322}
+.recap-scan-control-grid .btn-danger{background:rgba(104,46,67,.2)}
+.recap-scan-privacy{font-size:10px;color:#807c98;text-align:center;line-height:1.6;margin:13px 0 0}
+@media(max-width:355px){
+  .recap-scan-v2{padding-inline:13px}
+  .recap-scan-badges{gap:5px}
+  .recap-scan-badge{padding-inline:8px;font-size:9px}
+  .recap-scan-stage{padding:13px 10px}
+  .recap-scan-stage strong{font-size:12px}
+  .recap-scan-stat{padding:15px 11px}
+}
