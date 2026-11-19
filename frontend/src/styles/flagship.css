@@ -226,3 +226,25 @@ body{background:#09090f}
 .ref-weekday.ref-selected-weekday>span:first-child,.ref-weekday.ref-selected-weekday>small{color:#f4f0ff}
 .ref-weekday:focus-visible{outline:2px solid #a996ff;outline-offset:2px}
 .flagship-screen-heading button:focus-visible,.flagship-year-list button:focus-visible,.flagship-auth-tabs button:focus-visible,.flagship-delete-trigger:focus-visible,.flagship-demo-link:focus-visible{outline:2px solid #85b8ff;outline-offset:3px}
+
+
+/* Export is a portal outside the story drag area, so Android long-press works. */
+.recap-export-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:calc(15px + env(safe-area-inset-top,0px)) 14px calc(15px + env(safe-area-inset-bottom,0px));background:rgba(4,4,10,.88);backdrop-filter:blur(14px)}
+.recap-export-dialog{width:100%;max-width:430px;max-height:100%;overflow-y:auto;overscroll-behavior:contain;padding:16px;border-radius:23px;background:linear-gradient(140deg,#211b33,#11101d 70%);border:1px solid rgba(169,150,255,.28);box-shadow:0 24px 65px rgba(0,0,0,.65);display:flex;flex-direction:column;gap:12px}
+.recap-export-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.recap-export-head h2{font:700 21px/1.2 var(--font-display);margin:5px 0 0;color:#f7f5ff}
+.recap-export-close{display:grid;place-items:center;flex-shrink:0;width:35px;height:35px;border:1px solid rgba(169,150,255,.22);border-radius:50%;background:#29223a;color:#eee9fc;cursor:pointer}
+.recap-export-preview{display:block;object-fit:contain;max-width:100%;width:auto;min-height:0;max-height:min(57dvh,570px);margin:0 auto;border-radius:13px;border:1px solid rgba(169,150,255,.18);-webkit-touch-callout:default;touch-action:manipulation;user-select:auto;-webkit-user-select:auto}
+.recap-export-loading{display:grid;place-items:center;min-height:210px;color:#a99fbb;font-size:13px;text-align:center}
+.recap-export-hint{color:#b7accb;font-size:11px;line-height:1.5;text-align:center;margin:0}
+.recap-export-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.recap-export-actions .btn{min-height:45px;font-size:11px;line-height:1.25;padding:9px;display:flex;align-items:center;justify-content:center;gap:7px}
+.recap-export-actions button:disabled{opacity:.45}
+.recap-export-notice{margin:0;font-size:11px;line-height:1.45;color:#ffd99c}
+.recap-empty-analytics{min-height:calc(100dvh - 90px)}
+.recap-empty-panel{display:flex;flex-direction:column;align-items:flex-start;gap:15px;margin-top:18px;padding:24px 18px;background:linear-gradient(135deg,#21192e,#151322)}
+.recap-empty-panel h2{font:700 23px/1.2 var(--font-display);margin:0;color:#f7f5ff}
+.recap-empty-panel p{font-size:12px;line-height:1.65;margin:0 0 8px}
+.recap-empty-panel .btn{width:100%;min-height:48px;text-align:center}
+@media(max-height:710px){.recap-export-dialog{padding:12px;gap:8px}.recap-export-preview{max-height:45dvh}.recap-export-head h2{font-size:18px}}
+@media(max-width:370px){.recap-export-actions .btn{font-size:10px}.recap-empty-panel h2{font-size:20px}}
