@@ -114,8 +114,8 @@ export default function App(){
   },[timezone,clearPoll,startPolling]);
 
   useEffect(()=>{
-    initTelegramMiniApp();
-    return clearPoll;
+    const cleanupTelegram=initTelegramMiniApp();
+    return ()=>{cleanupTelegram();clearPoll();};
   },[clearPoll]);
   useEffect(()=>{
     if(demoMode)return;
