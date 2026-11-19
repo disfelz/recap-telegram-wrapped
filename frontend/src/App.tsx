@@ -72,16 +72,21 @@ export default function App() {
         const { job } = await recapApi.getScanStatus(jobId);
         if (!job) return;
         setScanProgress(job);
-        if (['completed', 'partial', 'failed', 'cancelled'].includes(job.status)) {
+        if (job.status === 'completed' || job.status === 'partial') {
+          // The scan callback writes the job status and the report separately.
+          // Keep polling until the confirmed report is retrievable.
+          const { results } = await recapApi.getSavedRecaps();
+          const byYear: Record<number, RecapStats> = {};
+          results.forEach((r) => { byYear[r.year] = r; });
+          setLiveRecaps(byYear);
+          if (byYear[job.year]) {
+            if (scanPoller.current) clearInterval(scanPoller.current);
+            scanPoller.current = null;
+            haptic('success');
+          }
+        } else if (job.status === 'failed' || job.status === 'cancelled') {
           if (scanPoller.current) clearInterval(scanPoller.current);
           scanPoller.current = null;
-          if (job.status === 'completed' || job.status === 'partial') {
-            haptic('success');
-            const { results } = await recapApi.getSavedRecaps();
-            const byYear: Record<number, RecapStats> = {};
-            results.forEach((r) => { byYear[r.year] = r; });
-            setLiveRecaps(byYear);
-          }
         }
       } catch {
         // A temporary network error should not cancel the scan.
@@ -150,12 +155,43 @@ export default function App() {
   }, [screen]);
 
   const openResults = (target: 'stories' | 'analytics') => {
-    if (!demoMode && !currentStats) {
-      setAppError('За выбранный год ещё нет проверенной статистики. Сначала подключи аккаунт и запусти анализ.');
-      setScreen('welcome');
-    } else {
+    setAppError(null);
+    // Keep the year switcher visible even when this year's report is absent.
+    setScreen(!currentStats && target === 'stories' ? 'analytics' : target);
+  };
+
+  const beginNewAnalysis = () => {
+    setAppError(null);
+    if (!demoMode && scanProgress.jobId !== 'demo-job' &&
+        ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(scanProgress.status)) {
+      setAppError('Уже выполняется анализ за ' + scanProgress.year + ' год. Сначала заверши или отмени его.');
+      setScreen('scan');
+      return;
+    }
+    setResumeJobId(null);
+    setScreen('connect');
+  };
+
+  const openScanResults = async () => {
+    setSelectedYear(scanProgress.year);
+    if (demoMode) {
       setAppError(null);
-      setScreen(target);
+      setScreen('stories');
+      return;
+    }
+    try {
+      const { results } = await recapApi.getSavedRecaps();
+      const byYear: Record<number, RecapStats> = {};
+      results.forEach((r) => { byYear[r.year] = r; });
+      setLiveRecaps(byYear);
+      if (byYear[scanProgress.year]) {
+        setAppError(null);
+        setScreen('stories');
+      } else {
+        setAppError('Результат ещё сохраняется. Подожди завершения записи статистики.');
+      }
+    } catch (error) {
+      setAppError((error as Error).message || 'Не удалось загрузить аналитику.');
     }
   };
 
@@ -270,7 +306,7 @@ export default function App() {
           selectedYear={selectedYear}
           availableYears={availableYears}
           onSelectYear={setSelectedYear}
-          onStartConnect={() => setScreen('connect')}
+          onStartConnect={beginNewAnalysis}
           hasSavedRecap={Boolean(currentStats)}
           onOpenSavedRecap={() => openResults('stories')}
           onOpenDemoStories={() => {
@@ -315,7 +351,7 @@ export default function App() {
               setScreen('connect');
             }
           }}
-          onOpenResults={() => openResults('stories')}
+          onOpenResults={() => {void openScanResults();}}
         />
       )}
 
@@ -338,16 +374,38 @@ export default function App() {
           onToggleHideNames={toggleHideNames}
           onSelectYear={setSelectedYear}
           onOpenStories={() => openResults('stories')}
+          onStartNewAnalysis={beginNewAnalysis}
         />
       )}
 
       {!currentStats && !demoMode && (screen === 'stories' || screen === 'analytics') && (
-        <div className="screen" role="status">
-          <h2>Статистика ещё не готова</h2>
-          <p>Для этого года нет результатов реального анализа. Демо-цифры не показываем.</p>
-          <button className="btn btn-primary" onClick={() => setScreen('connect')}>Подключить аккаунт</button>
-        </div>
-      )}
+        <main className="screen ref-analytics recap-empty-analytics" role="status">
+          <header className="ref-analytics-head">
+            <div><h1>Аналитика</h1><p>Реальные исходящие сообщения</p></div>
+            <div className="ref-year-switch" aria-label="Выбрать год">
+              {availableYears.map((year) => (
+                <button type="button" key={year} className={selectedYear === year ? 'active' : ''}
+                  onClick={() => {haptic('selection');setSelectedYear(year);}}>{year}</button>
+              ))}
+            </div>
+          </header>
+          <section className="ref-panel recap-empty-panel">
+            <span className="ref-overline">RECAP / {selectedYear}</span>
+            <h2>Анализа за {selectedYear} год пока нет</h2>
+            <p>Выбери год и запусти сканирование. Покажем только проверенные данные твоего Telegram — без вымышленных цифр.</p>
+            <button type="button" className="btn btn-primary" onClick={beginNewAnalysis}>
+              Начать анализ за {selectedYear} год
+            </button>
+            {Object.keys(liveRecaps).length > 0 && (
+              <button type="button" className="btn btn-secondary" onClick={() => {
+                const lastYear = Math.max(...Object.keys(liveRecaps).map(Number));
+                setSelectedYear(lastYear);
+                setScreen('analytics');
+              }}>Посмотреть готовый RECAP</button>
+            )}
+          </section>
+        </main>
+      )
       {screen === 'settings' && (
         <SettingsScreen
           timezone={timezone}
