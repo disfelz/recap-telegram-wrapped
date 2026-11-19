@@ -78,7 +78,7 @@ export const AnalyticsScreen:React.FC<Props>=({
         <div className="ref-chart-detail"><b>{MONTHS[month]}</b><small>{fmt(stats.byMonth[month]||0)} ({selectedMonthShare}%)</small></div></div>
       <div className="ref-months" role="group" aria-label="Активность по месяцам">
         {stats.byMonth.map((v,i)=><button className={month===i?'active':''} key={i} type="button"
-          aria-pressed={month===i} aria-label={MONTHS[i]+': '+fmt(v)}
+          aria-pressed={month===i} aria-label={MONTHS[i]+': '+fmt(v)} title={MONTHS[i]+': '+fmt(v)+' сообщений'} onMouseEnter={()=>setMonth(i)} onFocus={()=>setMonth(i)}
           onClick={()=>{setMonth(i);haptic('selection');}}>
           <span className="ref-month-bar-container"><motion.span initial={reduceMotion?false:{scaleY:0}} animate={{scaleY:1}} transition={{duration:.55,delay:i*.035,ease:'easeOut'}} style={{height:Math.max(3,v/maxMonth*100)+'%',transformOrigin:'bottom center'}}/></span>
           <small>{MONTHS[i][0]}</small>
@@ -97,7 +97,7 @@ export const AnalyticsScreen:React.FC<Props>=({
       <div className="ref-hours" role="group" aria-label="Активность по часам">
         {stats.byHour.map((v,i)=><button key={i} type="button" className={hour===i?'active':i<=4||i>=22?'night':''}
           title={String(i).padStart(2,'0')+':00 — '+fmt(v)}
-          aria-pressed={hour===i} onClick={()=>{setHour(i);haptic('selection');}}
+          aria-pressed={hour===i} onMouseEnter={()=>setHour(i)} onFocus={()=>setHour(i)} onClick={()=>{setHour(i);haptic('selection');}}
           style={{background:'rgba(169,150,255,'+(0.13+0.8*v/maxHour).toFixed(2)+')'}}>
           {String(i).padStart(2,'0')}
         </button>)}
@@ -119,7 +119,7 @@ export const AnalyticsScreen:React.FC<Props>=({
         </svg><div className="ref-donut-value"><small>{selectedKind.name}</small><b>{fmt(selectedKind.count)}</b></div></div>
         <div className="ref-kind-list">{kinds.filter(k=>k.count>0).map(k=><button key={k.key} type="button"
           className={k.key===kind?'active':''} aria-pressed={k.key===kind}
-          onClick={()=>{setKind(k.key);haptic('selection');}}>
+          onMouseEnter={()=>setKind(k.key)} onFocus={()=>setKind(k.key)} onClick={()=>{setKind(k.key);haptic('selection');}}>
           <i style={{background:k.color}}/><span>{k.name}</span><b>{fmt(k.count)}</b>
         </button>)}</div>
       </div>
