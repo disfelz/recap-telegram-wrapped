@@ -48,6 +48,7 @@ export default function App() {
   const [appError, setAppError] = useState<string | null>(null);
   const scanPoller = useRef<ReturnType<typeof setInterval> | null>(null);
   const demoPoller = useRef<ReturnType<typeof setInterval> | null>(null);
+  const demoPaused = useRef(false);
   useEffect(() => () => { if (scanPoller.current) clearInterval(scanPoller.current); if (demoPoller.current) clearInterval(demoPoller.current); }, []);
   const [scanProgress, setScanProgress] = useState<ScanProgressPayload>({
     jobId: 'demo-job',
@@ -106,7 +107,7 @@ export default function App() {
         const byYear: Record<number, RecapStats> = {};
         results.forEach((r) => { byYear[r.year] = r; });
         setLiveRecaps(byYear);
-        if (job && ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(job.status)) {
+        if (job && ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait', 'paused_user'].includes(job.status)) {
           setSelectedYear(job.year);
           setScanProgress(job);
           setScreen('scan');
@@ -161,7 +162,7 @@ export default function App() {
   const beginNewAnalysis = () => {
     setAppError(null);
     if (!demoMode && scanProgress.jobId !== 'demo-job' &&
-        ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait'].includes(scanProgress.status)) {
+        ['queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait', 'paused_user'].includes(scanProgress.status)) {
       setAppError('Уже выполняется анализ за ' + scanProgress.year + ' год. Сначала заверши или отмени его.');
       setScreen('scan');
       return;
@@ -194,6 +195,7 @@ export default function App() {
   };
 
   const startDemoScanSimulation = () => {
+    demoPaused.current = false;
     setScreen('scan');
     if (demoPoller.current) clearInterval(demoPoller.current);
     let dialogs = 0;
@@ -215,6 +217,7 @@ export default function App() {
     });
 
     demoPoller.current = setInterval(() => {
+      if (demoPaused.current) return;
       if (!floodShown && dialogs >= 40 && dialogs < 48) {
         floodShown = true;
         setScanProgress((p) => ({
@@ -285,7 +288,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className={'app-shell' + (screen === 'scan' ? ' scan-mode' : '')}>
       <div className={`ambient-bg ambient-${screen}`}>
         <div className="ambient-orb one" />
         <div className="ambient-orb two" />
@@ -324,6 +327,40 @@ export default function App() {
       {screen === 'scan' && (
         <ScanScreen
           progress={scanProgress}
+          onPause={async () => {
+            if (demoMode) {
+              demoPaused.current = true;
+              setScanProgress((p) => ({ ...p, status: 'paused_user' }));
+              return;
+            }
+            try {
+              const result = await recapApi.pauseScan(scanProgress.jobId);
+              if (!result.paused) throw new Error('Сканер не подтвердил паузу');
+              setScanProgress((p) => ({ ...p, status: 'paused_user' }));
+              setAppError(null);
+            } catch (e) {
+              setAppError((e as Error).message || 'Не удалось приостановить сканирование.');
+            }
+          }}
+          onUnpause={async () => {
+            if (demoMode) {
+              demoPaused.current = false;
+              setScanProgress((p) => ({
+                ...p, status: p.stage === 'quick_preview' ? 'quick_preview' : 'scanning',
+              }));
+              return;
+            }
+            try {
+              const result = await recapApi.unpauseScan(scanProgress.jobId);
+              if (!result.resumed) throw new Error('Сканер не подтвердил возобновление');
+              setScanProgress((p) => ({
+                ...p, status: p.stage === 'quick_preview' ? 'quick_preview' : 'scanning',
+              }));
+              setAppError(null);
+            } catch (e) {
+              setAppError((e as Error).message || 'Не удалось продолжить сканирование.');
+            }
+          }}
           onCancel={async () => {
             if (demoMode) {
               if (demoPoller.current) clearInterval(demoPoller.current);
@@ -430,7 +467,7 @@ export default function App() {
 
       </div>
 
-      {screen !== 'stories' && (
+      {screen !== 'stories' && screen !== 'scan' && (
         <nav className="bottom-nav">
           <button className={`nav-item ${screen === 'welcome' ? 'active' : ''}`} onClick={() => setScreen('welcome')}>
             <Home size={19} /> Главная

@@ -22,6 +22,7 @@ app = FastAPI(title="RECAP MTProto Scanner", docs_url=None, redoc_url=None)
 
 scan_semaphore = asyncio.Semaphore(settings.max_concurrent_scans)
 active_cancel_events: Dict[str, asyncio.Event] = {}
+active_resume_events: Dict[str, asyncio.Event] = {}
 active_job_user_ids: Dict[str, int] = {}
 
 
@@ -92,10 +93,35 @@ async def scan_start(req: ScanStartReq) -> dict:
     if req.job_id in active_cancel_events:
         raise HTTPException(status_code=409, detail="Scan job is already running")
     cancel_event = asyncio.Event()
+    resume_event = asyncio.Event()
+    resume_event.set()
     active_cancel_events[req.job_id] = cancel_event
+    active_resume_events[req.job_id] = resume_event
     active_job_user_ids[req.job_id] = req.telegram_user_id
-    asyncio.create_task(_run_scan_job(req, cancel_event))
+    asyncio.create_task(_run_scan_job(req, cancel_event, resume_event))
     return {"jobId": req.job_id, "status": "queued"}
+
+
+@app.post("/internal/scan/pause", dependencies=[Depends(verify_internal_token)])
+async def scan_pause(req: ScanCancelReq) -> dict:
+    if active_job_user_ids.get(req.job_id) != req.telegram_user_id:
+        raise HTTPException(status_code=409, detail="Job is not active for this user")
+    ev = active_resume_events.get(req.job_id)
+    if ev is None:
+        raise HTTPException(status_code=409, detail="Scan process not running")
+    ev.clear()
+    return {"paused": True}
+
+
+@app.post("/internal/scan/unpause", dependencies=[Depends(verify_internal_token)])
+async def scan_unpause(req: ScanCancelReq) -> dict:
+    if active_job_user_ids.get(req.job_id) != req.telegram_user_id:
+        raise HTTPException(status_code=409, detail="Job is not active for this user")
+    ev = active_resume_events.get(req.job_id)
+    if ev is None:
+        raise HTTPException(status_code=409, detail="Scan process not running")
+    ev.set()
+    return {"resumed": True}
 
 
 @app.post("/internal/scan/cancel", dependencies=[Depends(verify_internal_token)])
@@ -105,6 +131,9 @@ async def scan_cancel(req: ScanCancelReq) -> dict:
     ev = active_cancel_events.get(req.job_id)
     if ev:
         ev.set()
+        resume_ev = active_resume_events.get(req.job_id)
+        if resume_ev is not None:
+            resume_ev.set()
     await auth_manager.revoke_all_for_user(req.telegram_user_id)
     return {"cancelled": bool(ev)}
 
@@ -115,6 +144,9 @@ async def revoke_user(telegram_user_id: int) -> dict:
     for job_id, user_id in list(active_job_user_ids.items()):
         if user_id == telegram_user_id:
             active_cancel_events[job_id].set()
+            resume_ev = active_resume_events.get(job_id)
+            if resume_ev is not None:
+                resume_ev.set()
     await auth_manager.revoke_all_for_user(telegram_user_id)
     return {"revoked": True}
 
@@ -141,7 +173,7 @@ async def _post_callback(url: str, payload: dict) -> None:
             await asyncio.sleep(2 ** attempt)
 
 
-async def _run_scan_job(req: ScanStartReq, cancel_event: asyncio.Event) -> None:
+async def _run_scan_job(req: ScanStartReq, cancel_event: asyncio.Event, resume_event: asyncio.Event) -> None:
     client = None
     try:
         async with scan_semaphore:
@@ -156,6 +188,7 @@ async def _run_scan_job(req: ScanStartReq, cancel_event: asyncio.Event) -> None:
                 checkpoint_store=checkpoint_store,
                 progress_cb=on_progress,
                 cancel_event=cancel_event,
+                resume_event=resume_event,
             )
             stats = await analyzer.run(
                 job_id=req.job_id,
@@ -201,6 +234,7 @@ async def _run_scan_job(req: ScanStartReq, cancel_event: asyncio.Event) -> None:
         )
     finally:
         active_cancel_events.pop(req.job_id, None)
+        active_resume_events.pop(req.job_id, None)
         active_job_user_ids.pop(req.job_id, None)
         if client is not None:
             await auth_manager.terminate_client_session(client)

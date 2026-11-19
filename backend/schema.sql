@@ -24,10 +24,12 @@ CREATE TABLE IF NOT EXISTS scan_jobs (
   updated_at TEXT NOT NULL
 );
 
--- Аппаратная защита на уровне БД: не более 1 активного сканирования на аккаунт
-CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_job_per_user
+-- Не более 1 активного или вручную приостановленного сканирования на аккаунт.
+-- DROP нужен и при повторном применении схемы к существующей D1.
+DROP INDEX IF EXISTS idx_one_active_job_per_user;
+CREATE UNIQUE INDEX idx_one_active_job_per_user
 ON scan_jobs(telegram_user_id)
-WHERE status IN ('queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait');
+WHERE status IN ('queued', 'auth_pending', 'quick_preview', 'scanning', 'paused_flood_wait', 'paused_user');
 
 CREATE TABLE IF NOT EXISTS recap_results (
   telegram_user_id INTEGER NOT NULL,
