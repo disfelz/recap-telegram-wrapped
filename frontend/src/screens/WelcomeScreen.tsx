@@ -23,7 +23,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     <main className="screen flagship-welcome">
       <header className="flagship-welcome-header">
         <span className="flagship-brand"><span className="flagship-brand-mark" />RECAP<span className="flagship-brand-dot">.</span></span>
-        <span className="flagship-eyebrow">TELEGRAM / WRAPPED</span>
+        <span className="flagship-eyebrow">ТВОЙ ГОД / TELEGRAM</span>
       </header>
 
       <div className="flagship-orbit-scene" role="img" aria-label={'RECAP ' + selectedYear}>
