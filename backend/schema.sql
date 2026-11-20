@@ -48,3 +48,15 @@ CREATE TABLE IF NOT EXISTS phone_contact_requests (
   phone TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
+
+-- Только Telegram ID и технические метки визитов. Никаких профилей/контактов.
+CREATE TABLE IF NOT EXISTS bot_users (
+  telegram_user_id INTEGER PRIMARY KEY,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  last_source TEXT NOT NULL DEFAULT 'bot'
+    CHECK (last_source IN ('bot', 'webapp'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_users_first_seen_at ON bot_users(first_seen_at);
+CREATE INDEX IF NOT EXISTS idx_bot_users_last_seen_at ON bot_users(last_seen_at);
