@@ -21,7 +21,7 @@ Cloudflare Pages может выполнять временную расшире
 
 ## 2. Подключения
 
-Убедись, что в Cloudflare Pages задан `VITE_API_BASE_URL` на рабочий Worker, а в Worker имеются `APP_URL`, `SCANNER_BASE_URL`, привязка D1 `DB` и секреты `BOT_TOKEN`, `BOT_WEBHOOK_SECRET`, `SCANNER_SHARED_SECRET`. Не публикуй значения секретов, `TELEGRAM_API_HASH`, `SESSION_ENCRYPTION_KEY_B64` и старые сессионные файлы.
+Убедись, что в Cloudflare Pages задан `VITE_API_BASE_URL` на рабочий Worker, а в Worker имеются `APP_URL`, `SCANNER_BASE_URL`, привязка D1 `DB` и секреты `BOT_TOKEN`, `BOT_WEBHOOK_SECRET`, `SCANNER_SHARED_SECRET`. Опционально добавь `ADMIN_TELEGRAM_IDS` — список Telegram ID администраторов через запятую, без пробелов либо с пробелами (они обрезаются). Без этой переменной приватная команда `/stats` никому не доступна. Храни IDs в Cloudflare Worker Secrets/Variables, **не помещай их в код, Git или `wrangler.toml`**. Не публикуй значения секретов, `TELEGRAM_API_HASH`, `SESSION_ENCRYPTION_KEY_B64` и старые сессионные файлы.
 
 Для scanner требуются постоянные каталоги `SESSION_STORE_DIR=/data/recap_sessions` и `CHECKPOINT_DIR=/data/recap_checkpoints` на приватном volume: без него не сохранятся курсоры частичных сканов после перезагрузки. Файлы сессий должны быть доступны только пользователю процесса (0700 каталог, 0600 файлы). После окончания сканирования зашифрованный файл удаляется; повторный анализ требует нового входа. Не оставляй лишние Render replicas с теми же Telegram credentials.
 
@@ -32,6 +32,21 @@ Cloudflare Pages может выполнять временную расшире
 ## 3. D1
 
 Перед миграциями создай резервную копию базы. Не запускай `backend/schema.sql` поверх существующей базы для пересоздания данных. Миграции из `backend/migrations/` применять по порядку, предварительно проверив таблицы и уже добавленные колонки. Минимум — таблица `phone_contact_requests` и колонка `scan_jobs.notified_at` из `0002_recap_v2.sql`, если они ещё отсутствуют.
+
+**Для статистики бота обязательно сначала выполни `backend/migrations/0003_bot_users.sql` на существующей production D1.** В Cloudflare Dashboard → Workers & Pages → D1 → `recap-db` → Console вставь полный SQL из этого файла и выполни его. Альтернативно из каталога `backend/`:
+
+```bash
+npx wrangler d1 execute recap-db --remote --file=migrations/0003_bot_users.sql
+```
+
+Убедись, что таблица `bot_users` появилась, затем добавь ID через **Workers & Pages → твой Worker → Settings → Variables and Secrets → Add → Secret** (имя `ADMIN_TELEGRAM_IDS`, значение — твой ID или несколько ID через запятую). При наличии локального Wrangler можно задать значение интерактивно без публикации в репозитории:
+
+```bash
+cd backend
+npx wrangler secret put ADMIN_TELEGRAM_IDS
+```
+
+**Только после применения миграции** выпусти Worker из обновлённого `main` (`npm run deploy` в `backend/` или через CI/CD). Проверка: администратор пишет `/stats` в личном чате и получает счётчики, обычный пользователь получает стандартную справку `/help`; в публичный список команд `/stats` не добавляется. Первоначально счётчики аудитории начинаются с нуля: миграция не восстанавливает историю посещений задним числом.
 
 ## 4. Реальная приёмка на Android
 
