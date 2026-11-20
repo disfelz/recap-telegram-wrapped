@@ -207,7 +207,7 @@ export async function handleBotUpdate(update: TelegramUpdate, env: BotEnv, ctx: 
       // Never expose this command in public bot commands or /help.
       const isAdmin = msg.chat.type === 'private' && chatId === userId &&
         (env.ADMIN_TELEGRAM_IDS || '').split(',').some(
-          (id) => /^\\d+$/.test(id.trim()) && id.trim() === String(userId)
+          (id) => /^\d+$/.test(id.trim()) && id.trim() === String(userId)
         );
       if (!isAdmin) {
         await sendHelp(env, chatId);
@@ -258,7 +258,7 @@ export async function handleBotUpdate(update: TelegramUpdate, env: BotEnv, ctx: 
           '',
           '<i>Полный и частичный RECAP могут быть у одного пользователя за разные годы.</i>',
         ];
-        await sendTelegramMessage(env.BOT_TOKEN, chatId, lines.join('\\n'));
+        await sendTelegramMessage(env.BOT_TOKEN, chatId, lines.join('\n'));
       } catch (error) {
         console.error('Failed to query admin statistics', error);
         await sendTelegramMessage(
