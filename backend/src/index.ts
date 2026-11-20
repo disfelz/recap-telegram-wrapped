@@ -1,5 +1,5 @@
 import { verifyTelegramInitData, TelegramInitUser } from './crypto';
-import { handleBotUpdate, BotEnv } from './bot';
+import { handleBotUpdate, BotEnv, recordUserVisit } from './bot';
 
 export interface Env extends BotEnv {
   BOT_WEBHOOK_SECRET: string;
@@ -51,7 +51,7 @@ async function proxyToScanner(
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const corsOrigin = env.APP_URL || '*';
 
@@ -76,7 +76,7 @@ export default {
         return jsonResponse({ error: 'Forbidden' }, 403, corsOrigin);
       }
       const update = await request.json();
-      await handleBotUpdate(update as never, env);
+      await handleBotUpdate(update as never, env, ctx);
       return jsonResponse({ ok: true }, 200, corsOrigin);
     }
 
@@ -281,6 +281,10 @@ export default {
       }
 
       if (url.pathname === '/api/me' && request.method === 'GET') {
+        // Telemetry is best-effort and must not increase Mini App response latency.
+        ctx.waitUntil(recordUserVisit(env.DB, user.id, 'webapp').catch((error: unknown) => {
+          console.warn('Unable to record webapp visit', error);
+        }));
         const [recentJob, recaps, settings] = await Promise.all([
           env.DB.prepare(
             `SELECT id, year, status, stage, processed_dialogs,
@@ -643,6 +647,7 @@ export default {
           env.DB.prepare('DELETE FROM scan_jobs WHERE telegram_user_id = ?').bind(user.id),
           env.DB.prepare('DELETE FROM user_settings WHERE telegram_user_id = ?').bind(user.id),
           env.DB.prepare('DELETE FROM phone_contact_requests WHERE telegram_user_id = ?').bind(user.id),
+          env.DB.prepare('DELETE FROM bot_users WHERE telegram_user_id = ?').bind(user.id),
         ]);
         return jsonResponse({ deleted: true }, 200, corsOrigin);
       }
